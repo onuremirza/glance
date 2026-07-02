@@ -1,0 +1,27 @@
+'use strict';
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+  onSessions: (cb) => ipcRenderer.on('sessions', (_e, s) => cb(s)),
+  focus: (hwnd) => ipcRenderer.invoke('focus', hwnd),
+  rename: (payload) => ipcRenderer.invoke('rename', payload),
+  setIgnore: (ignore) => ipcRenderer.send('set-ignore', ignore),
+  newSession: () => ipcRenderer.send('new-session'),
+  killSession: (pid) => ipcRenderer.send('kill-session', pid),
+  hideSession: (pid) => ipcRenderer.send('hide-session', pid),
+  onPopupClose: (cb) => ipcRenderer.on('popup-close', () => cb()),
+  onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
+  onUsage: (cb) => ipcRenderer.on('usage', (_e, u) => cb(u)),
+  onHealth: (cb) => ipcRenderer.on('health', (_e, h) => cb(h)),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  setOpenAtLogin: (on) => ipcRenderer.send('set-open-at-login', on),
+  setNotify: (on) => ipcRenderer.send('set-notify', on),
+  setRichData: (on) => ipcRenderer.invoke('set-rich-data', on),
+  setOrientation: (o) => ipcRenderer.send('set-orientation', o),
+  onOrientation: (cb) => ipcRenderer.on('orientation', (_e, o) => cb(o)),
+  resetPosition: () => ipcRenderer.send('reset-position'),
+  dragStart: () => ipcRenderer.send('drag-start'),
+  dragMove: () => ipcRenderer.send('drag-move'),
+  dragEnd: () => ipcRenderer.send('drag-end'),
+  quit: () => ipcRenderer.send('quit'),
+});

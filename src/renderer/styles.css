@@ -1,0 +1,394 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --green: #2ecc71;
+  --green-glow: rgba(46, 204, 113, 0.55);
+  --red: #ff4d4f;
+  --red-glow: rgba(255, 77, 79, 0.55);
+  --gray: #7a7f87;
+  --pill: rgba(20, 22, 26, 0.82);
+  --text: #e8eaed;
+  --sub: #9aa0a6;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  -webkit-user-select: none; user-select: none;
+  cursor: default;
+}
+
+/* Pill sits at the top; the rest of the (taller) window is transparent + click-through
+   so popups have room to open downward without being clipped. */
+#bar {
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+#dots {
+  position: relative;   /* containing block for the absolute #ctrls / #add satellites */
+  display: flex;
+  align-items: center;
+  padding: 7px 16px;
+  background: var(--pill);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+}
+
+.hidden { display: none !important; }
+
+/* account-wide usage gauge (5-hour rate-limit window) — small fill bar, details on hover */
+.usage {
+  margin-left: 11px;
+  width: 30px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.14);
+  overflow: hidden;
+  cursor: default;
+  flex: 0 0 auto;
+}
+.usage-fill {
+  display: block;
+  height: 100%;
+  width: var(--u, 0%);
+  background: var(--uc, #5a9cff);
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+/* faint "no claude" hint shown inside the pill when there are no sessions */
+.hint {
+  color: var(--sub);
+  font-size: 11px;
+  padding: 0 2px;
+}
+.hint.err { color: var(--red); }
+
+/* "+" new-session button: collapsed to zero width; the pill grows to reveal it
+   on hover (or always, when empty). Turns green on its own hover. */
+.add {
+  position: absolute;          /* out of flow → revealing it never moves the dots */
+  left: 100%;                  /* flush to the pill's right edge, grows outward */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 20px;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  font-size: 0; /* hide the text "+"; drawn below for exact centering */
+  transition: width 0.18s ease, height 0.18s ease, opacity 0.16s ease, background 0.15s ease, color 0.15s ease;
+}
+/* "+" drawn as two thin bars, perfectly centered (no font-metric offset) */
+.add::before,
+.add::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: currentColor;
+}
+.add::before { width: 10px; height: 2px; } /* horizontal */
+.add::after  { width: 2px; height: 10px; } /* vertical */
+#dots:hover .add,
+#dots.empty .add {
+  width: 20px;   /* circle: equal width/height; flush to pill edge (continuous hover) */
+  opacity: 1;
+}
+/* hover: filled green circle with a white "+" */
+.add:hover {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 0 10px var(--green-glow);
+}
+
+/* Left control cluster: collapsed at rest, grows to the left on hover (mirror
+   of the "+"). Holds settings / move / close. */
+#ctrls {
+  position: absolute;      /* out of flow → revealing it never moves the dots */
+  right: 100%;             /* flush to the pill's left edge, grows outward (leftward) */
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+}
+/* Each control collapses to zero width (same proven technique as ".add"); the
+   cluster reveals on hover. min-width:0 + overflow:hidden let the glyph clip so
+   the button truly collapses (flex min-width:auto would otherwise block it). */
+.ctrl {
+  width: 0;
+  height: 18px;
+  min-width: 0;
+  flex: 0 0 auto;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sub);
+  font-size: 12px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.18s ease, height 0.18s ease, opacity 0.16s ease, margin 0.18s ease, background 0.15s ease, color 0.15s ease;
+}
+#dots:hover .ctrl,
+#dots.empty .ctrl {
+  width: 18px;
+  opacity: 1;
+}
+#dots:hover .ctrl + .ctrl,
+#dots.empty .ctrl + .ctrl { margin-left: 6px; }
+.ctrl:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+.ctrl.danger:hover { background: var(--red); color: #fff; box-shadow: 0 0 10px var(--red-glow); }
+#c-move { cursor: move; } /* dragged via JS pointer-capture (see renderer) */
+
+/* Settings panel */
+.panel {
+  position: fixed;
+  top: 42px;
+  width: 216px;
+  background: linear-gradient(180deg, rgba(30,32,38,0.98), rgba(20,22,26,0.98));
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 65;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.55);
+  color: var(--text);
+  font-size: 12.5px;
+  backdrop-filter: blur(10px);
+}
+.panel-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.3px;
+  color: var(--sub);
+  margin: 0 2px 10px;
+}
+.panel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255,255,255,0.045);
+  min-height: 34px;
+}
+.panel-title + .panel-item { margin-top: 0; }
+.panel-item + .panel-item { margin-top: 6px; }
+
+/* iOS-style toggle switch */
+.switch { position: relative; width: 34px; height: 19px; flex: 0 0 auto; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.18);
+  border-radius: 999px;
+  transition: background 0.18s ease;
+  cursor: pointer;
+}
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 15px; height: 15px;
+  left: 2px; top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+  transition: transform 0.18s ease;
+}
+.switch input:checked + .slider { background: var(--green); }
+.switch input:checked + .slider::before { transform: translateX(15px); }
+
+.panel-btn {
+  display: block;
+  width: 100%;
+  margin-top: 9px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text);
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.panel-btn:hover { background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.18); }
+
+/* health line (which authoritative sources are connected) */
+.panel-health { display: flex; gap: 12px; margin-top: 10px; font-size: 10px; color: var(--sub); }
+.panel-health .ok  { color: var(--green); }
+.panel-health .bad { color: var(--red); }
+
+/* empty overlay: dimmed "sleeping" look, wakes on hover */
+#dots.empty { opacity: 0.55; transition: opacity 0.25s ease; }
+#dots.empty:hover { opacity: 1; }
+
+/* segmented control (Yatay / Dikey) */
+.seg { display: inline-flex; background: rgba(255,255,255,0.06); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--sub);
+  font-size: 11px; font-family: inherit; padding: 4px 10px;
+  border-radius: 6px; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.seg button.active { background: var(--green); color: #08130c; font-weight: 600; }
+.seg button:not(.active):hover { color: var(--text); }
+
+/* ===== vertical orientation: a narrow capsule docked top-left, dots stacked ===== */
+/* leave room above the pill for the control cluster (which opens upward) */
+body.vertical #bar { align-items: flex-start; justify-content: flex-start; padding: 80px 0 0 8px; }
+body.vertical #dots {
+  flex-direction: column;
+  padding: 16px 8px;                       /* swap: narrow width, taller ends */
+}
+body.vertical .dot + .dot { margin-left: 0; margin-top: 12px; }
+/* control cluster stacks ABOVE the pill (absolute, flush to top edge, grows up) */
+body.vertical #ctrls {
+  flex-direction: column;
+  right: auto; top: auto;
+  bottom: 100%; left: 50%;
+  transform: translateX(-50%);
+}
+body.vertical .ctrl { width: 18px; height: 0; }
+body.vertical #dots:hover .ctrl,
+body.vertical #dots.empty .ctrl { width: 18px; height: 18px; opacity: 1; }
+body.vertical #dots:hover .ctrl + .ctrl,
+body.vertical #dots.empty .ctrl + .ctrl { margin-left: 0; margin-top: 6px; }
+/* "+" flush to the BOTTOM edge, grows downward */
+body.vertical .add {
+  left: 50%; top: 100%; right: auto;
+  transform: translateX(-50%);
+  width: 20px; height: 0;
+}
+body.vertical #dots:hover .add,
+body.vertical #dots.empty .add { width: 20px; height: 20px; opacity: 1; }
+/* usage gauge and hint sit at the bottom of the column, centered */
+body.vertical .usage { margin-left: 0; margin-top: 10px; }
+body.vertical .hint { padding: 3px 0; text-align: center; }
+
+.dot {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--gray);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.3s ease;
+  position: relative;
+}
+.dot:hover { transform: scale(1.35); }
+/* Spacing lives on the dots (not a flex `gap`) so the collapsed "+" adds no
+   width — keeps the resting pill symmetric (equal left/right padding). */
+.dot + .dot { margin-left: 12px; }
+
+/* context-usage ring around the dot (workload). --ctx = 0..1 fill, --ring = color,
+   --ring-op hides it when unknown. conic fill + radial mask = thin ring. */
+.dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(from -90deg, var(--ring, #5a9cff) calc(var(--ctx, 0) * 360deg), rgba(255,255,255,0.10) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
+  opacity: var(--ring-op, 0);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.dot.busy {
+  background: var(--green);
+  box-shadow: 0 0 7px var(--green-glow);
+}
+.dot.waiting {
+  background: var(--red);
+  box-shadow: 0 0 9px var(--red-glow);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.dot.new { background: var(--gray); }
+.dot.compacting {
+  background: #5a9cff;
+  box-shadow: 0 0 8px rgba(90,156,255,0.6);
+}
+
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 6px var(--red-glow); }
+  50%     { box-shadow: 0 0 14px var(--red-glow); }
+}
+
+.tooltip {
+  position: fixed;
+  background: rgba(15,16,19,0.96);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.09);
+  padding: 8px 11px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  pointer-events: none;
+  max-width: 340px;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.5);
+  z-index: 50;
+}
+.tooltip .t-name { font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.tooltip .t-state-busy { color: var(--green); }
+.tooltip .t-state-waiting { color: var(--red); }
+.tooltip .t-state-compacting { color: #5a9cff; }
+.tooltip .t-sub { color: var(--sub); font-size: 10.5px; white-space: normal; word-break: break-all; }
+
+.menu {
+  position: fixed;
+  background: rgba(22,24,28,0.98);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 60;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.menu-item {
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-item:hover { background: rgba(255,255,255,0.09); }
+.menu-item.danger { color: var(--red); }
+.menu-item.danger:hover { background: rgba(255,77,79,0.15); }
+
+.rename {
+  position: fixed;
+  z-index: 70;
+}
+.rename input {
+  background: rgba(15,16,19,0.98);
+  border: 1px solid var(--green);
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  outline: none;
+  width: 170px;
+  font-family: inherit;
+}

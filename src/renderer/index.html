@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Glance</title>
+</head>
+<body>
+  <div id="bar">
+    <div id="dots">
+      <div id="ctrls">
+        <button id="c-settings" class="ctrl" title="Settings">⚙</button>
+        <button id="c-move" class="ctrl" title="Move (drag)">✥</button>
+        <button id="c-close" class="ctrl danger" title="Close">✕</button>
+      </div>
+      <span id="hint" class="hint hidden">no sessions</span>
+      <button id="add" class="add" title="New session">+</button>
+      <div id="usage" class="usage hidden" title=""><span id="usage-fill" class="usage-fill"></span></div>
+    </div>
+  </div>
+
+  <!-- Settings panel -->
+  <div id="settings" class="panel hidden">
+    <div class="panel-title">Settings</div>
+    <div class="panel-item">
+      <span>Start at login</span>
+      <label class="switch">
+        <input id="set-startup" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="panel-item">
+      <span>Notify when waiting</span>
+      <label class="switch">
+        <input id="set-notify" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="panel-item">
+      <span title="Exact context % + usage bar. Installs Glance's statusLine (no jq, reversible).">Rich data</span>
+      <label class="switch">
+        <input id="set-rich" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="panel-item">
+      <span>Orientation</span>
+      <div class="seg" id="set-orient">
+        <button data-o="horizontal">Horizontal</button>
+        <button data-o="vertical">Vertical</button>
+      </div>
+    </div>
+    <button id="set-center" class="panel-btn">Center position</button>
+    <div id="panel-health" class="panel-health"></div>
+  </div>
+
+  <!-- Hover tooltip -->
+  <div id="tooltip" class="tooltip hidden"></div>
+
+  <!-- Right-click menu -->
+  <div id="menu" class="menu hidden">
+    <div class="menu-item" data-act="rename">Rename</div>
+    <div class="menu-item" data-act="focus">Focus window</div>
+    <div class="menu-item" data-act="hide">Hide</div>
+    <div class="menu-item danger" data-act="kill">Terminate session</div>
+  </div>
+
+  <!-- Inline rename popup -->
+  <div id="rename" class="rename hidden">
+    <input id="rename-input" type="text" maxlength="40" placeholder="session name" />
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

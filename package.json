@@ -1,0 +1,57 @@
+{
+  "name": "glance",
+  "version": "0.1.0",
+  "description": "A minimal always-on-top overlay that shows running Claude Code sessions at a glance — status, context workload and usage limit (Windows).",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "keywords": [
+    "claude-code",
+    "electron",
+    "overlay",
+    "windows",
+    "developer-tools",
+    "monitoring"
+  ],
+  "author": "onuremirza",
+  "license": "MIT",
+  "homepage": "https://github.com/onuremirza/glance",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onuremirza/glance.git"
+  },
+  "bugs": {
+    "url": "https://github.com/onuremirza/glance/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "build": {
+    "appId": "com.glance.overlay",
+    "productName": "Glance",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.ps1"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.ico",
+      "artifactName": "Glance-${version}-portable.exe"
+    },
+    "portable": {
+      "unpackDirName": "glance"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}
