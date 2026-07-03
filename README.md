@@ -4,7 +4,7 @@
 
 **A minimal always-on-top overlay that shows your running Claude Code sessions at a glance (Windows).**
 
-_🟢 working · 🔴 waiting for you · 🔵 compacting — with a context-usage ring and an account usage bar._
+_🟢 working · 🟣 asking you · 🟠 needs approval · ⚪ idle · 🔵 compacting — with a context-usage ring and an account usage bar._
 
 [MIT License](LICENSE)
 
@@ -16,25 +16,32 @@ When you run several Claude Code sessions at once, "which one is done, which is 
 **waiting for my input**?" normally means hunting through terminal windows. Glance answers it from a tiny bar
 at the top of your screen. Each session is a **dot**:
 
-- 🟢 **green** = working · 🔴 **red** = waiting for you (input/permission) · 🔵 **blue** = compacting context
+- 🟢 **green** = working · 🟣 **purple** = asking you a question (or plan approval) · 🟠 **amber** = waiting to
+  run a tool (needs your approval) · ⚪ **gray** = idle (finished, waiting for your next prompt) · 🔵 **blue** =
+  compacting context
 - the **ring** around a dot = context window usage (workload)
 - the little bar on the pill = your account's **5-hour usage limit**
 - **hover** a dot for details (project, state, context %, cost, pid); **click** to bring its terminal window
   forward; **right-click** to rename / hide / terminate; **`+`** to start a new session
 
-A desktop **notification** fires when a session flips from working → waiting, so you don't have to keep
+The purple/amber states answer "why did it stop?" at a glance — it's blocked on *you*. A desktop
+**notification** fires when a session needs you (asks a question / needs approval), so you don't have to keep
 checking.
 
 ## Features
 
+- **Rich states** — beyond working/idle, Glance splits "waiting for you" into **asking you a question** (🟣) vs
+  **needs approval to run a tool** (🟠), derived from the transcript (tool name only, never its content)
 - **Accurate state** from Claude's own session file (`~/.claude/sessions/<pid>.json`); transcript + CPU
   heuristics as a fallback for older versions
 - **Workload** — a context-fill ring per dot + tokens/cost in the tooltip
 - **Usage limit** — 5-hour / 7-day account usage (optional "rich data")
-- **Notifications** when a session needs you
+- **Notifications** when a session needs you (question / approval)
 - **Jump to session** — brings the right terminal window forward (matches the project by window title)
 - **Horizontal or vertical**, draggable, always-on-top, click-through (never blocks the desktop), single-instance
-- **Local & private** — no network calls, no telemetry; detection is pure local process inspection
+- **Opt-in auto-update** (off by default) — checks GitHub Releases only when you enable it; no network otherwise
+- **Local & private** — no telemetry; detection is pure local process + file inspection (the only optional
+  network is the opt-in updater)
 
 ## Requirements
 
@@ -48,8 +55,15 @@ checking.
 
 ## Install
 
-**Portable (recommended):** grab `Glance-<version>-portable.exe` from [Releases](../../releases) and run it —
-no installation. _(Unsigned, so Windows SmartScreen may warn on first launch → More info → Run anyway.)_
+**Installer (recommended):** grab `Glance-<version>-Setup.exe` from [Releases](../../releases) and run it. It
+installs per-user (no admin prompt), adds a desktop + Start-menu shortcut (searchable), and registers an
+uninstaller under _Apps & features_. Enable **Auto-update** in Settings to get future versions from within the
+app.
+
+**Portable:** prefer no install? Grab `Glance-<version>-portable.exe` and run it directly (portable builds
+don't self-update).
+
+_Both are unsigned, so Windows SmartScreen may warn on first launch → More info → Run anyway._
 
 **From source:**
 
@@ -58,7 +72,7 @@ npm install
 npm start
 ```
 
-Quit from the **tray** icon → Exit. Build your own portable exe with `npm run dist`.
+Quit from the **tray** icon → Exit. Build the installer + portable exe with `npm run dist`.
 
 ## Rich data (optional)
 

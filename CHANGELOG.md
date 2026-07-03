@@ -3,6 +3,20 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.4]
+
+### Fixed
+- **Soru soran / izin bekleyen session yeşil görünüyordu.** Claude Code v2.1.199, session dosyasına yeni
+  `status:"waiting"` + `waitingFor` (ör. "permission prompt") yazıyor; Glance bunu tanımıyordu ve sinyal
+  transcript/CPU heuristiğine düşüp yeşil (working) kalıyordu. Artık `waitingFor` okunuyor → 🟠 izin / 🟣 soru.
+- **`fresh` (mtime) kısa-devresi.** Yeni meta girdileri (`ai-title`/`mode`/`permission-mode`) dosya mtime'ını
+  değiştirdiğinden, soru/izin belirdiği an ~2.5s "working" görünüyordu. mtime yerine `stop_reason` kullanılıyor.
+
+### Changed
+- Transcript okuması yeni `type:"message"` formatına ve lider meta girdilerine dayanıklı (`convRole`); dot
+  isimlendirmesi sentetik/slash-komut açılışlarını atlıyor. `waitingFor` eşlemesi daha sağlam (boş → yanlış
+  "seni bekliyor" üretmez). README + ARCHITECTURE güncellendi.
+
 ## [0.2.3]
 
 ### Added

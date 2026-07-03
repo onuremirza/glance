@@ -30,13 +30,25 @@ function capitalize(s) { return s ? s.charAt(0).toLocaleUpperCase('tr') + s.slic
 function lastToolName(msg) {
   const c = msg && msg.content;
   if (!Array.isArray(c)) return null;
-  for (let i = c.length - 1; i >= 0; i--) {
-    const b = c[i];
-    if (b && b.type === 'tool_use') return b.name || null;
+  // Bir soru aracı varsa onu tercih et (bloke edici tool turn'ün sonunda olmayabilir).
+  let last = null;
+  for (const b of c) {
+    if (b && b.type === 'tool_use') { last = b.name || null; if (QUESTION_TOOLS.has(b.name)) return b.name; }
   }
+  return last;
+}
+// Kullanıcıyı bloke eden "soru" araçları. (EnterPlanMode plana GİRİŞ — onay istemez;
+// yalnızca ExitPlanMode planı onaya sunar.)
+const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
+
+// Bir transcript girdisini konuşma rolüne indir. Claude Code formatı evrildi:
+// eski `type:"user"|"assistant"` + yeni `type:"message"` (rol `message.role`'da).
+// Üst-seviye type ya da message.role'dan rolü çöz (ileriye dönük dayanıklılık).
+function convRole(o) {
+  if (o.type === 'user' || o.type === 'assistant') return o.type;
+  if (o.type === 'message' && o.message && (o.message.role === 'user' || o.message.role === 'assistant')) return o.message.role;
   return null;
 }
-const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']);
 
 // Context-window limit for the % ring. 1M-capable models (opus/sonnet 4+, [1m]
 // variants) → 1M, else 200k; if observed context exceeds the guess, bump (a
@@ -240,9 +252,23 @@ class Engine extends EventEmitter {
       metaSeen = true;
       if (meta.sessionId) s.sessionId = meta.sessionId;
       if (meta.name) s.claudeName = meta.name;
-      if (meta.status === 'busy') { s.status = 'busy'; s.stateSrc = 'claude'; }
+      if (meta.status === 'compacting') { s.status = 'compacting'; s.stateSrc = 'claude'; }
+      else if (meta.status === 'waiting') {
+        // v2.1.199+: Claude "seni bekliyor" diyor; türü waitingFor'dan. Varsayılanı
+        // 'question' YAPMA (boş waitingFor gelen her biten session'ı yanlışça mor
+        // "seni bekliyor" yapardı). Soru-türü → question, başka bilinen blok → izin,
+        // boş/bilinmeyen → transcript rafine etsin (aşağıda).
+        const wf = (meta.waitingFor || '').toLowerCase();
+        if (/quest|plan|answer|choose|select|\binput\b|response|elicit/.test(wf)) { s.status = 'question'; s.stateSrc = 'claude'; }
+        else if (wf) { s.status = 'permission'; s.stateSrc = 'claude'; } // "permission prompt" vb.
+        else { s.status = 'waiting'; s.stateSrc = 'claude'; } // boş waitingFor → aşağıda transcript rafine eder (jsonIdle)
+      }
+      else if (meta.status === 'busy') {
+        // Aktif turn. ANCAK eski sürümler (v2.1.198) soru sorarken de 'busy' yazar;
+        // transcript kesin bir soru aracı (AskUserQuestion/plan) gösteriyorsa düzelt.
+        s.status = 'busy'; s.stateSrc = 'claude'; s._maybeQuestion = true;
+      }
       else if (meta.status === 'idle') { s.status = 'waiting'; s.stateSrc = 'claude'; }
-      else if (meta.status === 'compacting') { s.status = 'compacting'; s.stateSrc = 'claude'; }
     }
     this._metaSeen = metaSeen; // for the health indicator
 
@@ -359,16 +385,18 @@ class Engine extends EventEmitter {
       }
       // Transcript fallback ONLY for what the authoritative sources didn't cover
       // (skips a per-tick 64KB read when Claude status + statusLine already gave us it).
-      // Claude 'idle' dediğinde (→'waiting') transcript ile RAFİNE ederiz: boşta mı,
-      // yoksa seni bloke mi etti (soru/izin). 'busy'/'compacting' kesin, dokunma.
+      // Claude 'idle' dediğinde transcript ile RAFİNE ederiz (boşta mı, soru/izin mi);
+      // 'busy' dediğinde de eski sürüm bir soruyu maskeliyor olabilir → sorarsa düzelt.
       const needState = s.stateSrc !== 'claude';
       const jsonIdle = s.stateSrc === 'claude' && s.status === 'waiting';
-      if (needState || jsonIdle || !haveCtx) {
+      if (needState || jsonIdle || s._maybeQuestion || !haveCtx) {
         const st = this._sessionState(dir, sid, s.status === 'busy');
         if (st) {
           if (needState && st.state) { s.status = st.state; s.stateSrc = 'transcript'; }
           // json 'idle' otoriter → yalnızca idle-ailesi (question/permission/waiting), busy'e döndürme
           else if (jsonIdle && st.state && st.state !== 'busy') { s.status = st.state; s.stateSrc = 'claude+transcript'; }
+          // json 'busy' ama transcript kesin bir soru aracı gösteriyor (eski sürüm maskeleme) → düzelt
+          else if (s._maybeQuestion && st.state === 'question') { s.status = 'question'; s.stateSrc = 'claude+transcript'; }
           if (!haveCtx && st.ctxTokens != null) {
             s.ctx = st.ctxTokens;
             s.ctxPct = Math.min(1, st.ctxTokens / ctxLimit(st.model, st.ctxTokens));
@@ -401,31 +429,35 @@ class Engine extends EventEmitter {
       let text = buf.toString('utf8');
       if (start > 0) { const nl = text.indexOf('\n'); if (nl >= 0) text = text.slice(nl + 1); } // drop partial line
       const lines = text.split('\n');
-      let lastReal = null, ctxTokens = null, model = null;
+      let lastReal = null, lastRole = null, ctxTokens = null, model = null;
       for (let i = lines.length - 1; i >= 0; i--) {
         const ln = lines[i]; if (!ln.trim()) continue;
         let o; try { o = JSON.parse(ln); } catch { continue; }
-        if (ctxTokens == null && o.type === 'assistant') {
+        const role = convRole(o); // 'user' | 'assistant' | null (yeni type:"message"'ı da tanır)
+        if (ctxTokens == null && role === 'assistant') {
           const u = o.message && o.message.usage;
           if (u) {
             ctxTokens = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
             model = o.message.model || null;
           }
         }
-        if (!lastReal && (o.type === 'user' || o.type === 'assistant')) lastReal = o;
+        if (!lastReal && role) { lastReal = o; lastRole = role; }
         if (lastReal && ctxTokens != null) break;
       }
       if (!lastReal) return { state: null, ctxTokens, model };
-      const fresh = (Date.now() - st.mtimeMs) < 2500;
+      // NOT: mtime'a GÜVENME — yeni meta girdileri (ai-title/mode/permission-mode) mtime'ı
+      // bumpluyor; "fresh → busy" kısa-devresi soru/izni 2.5s bastırıyordu. Onun yerine
+      // stop_reason: yoksa akış sürüyor (busy), tool_use → bloke, bittiyse boşta.
+      const msg = lastReal.message || {};
+      const sr = msg.stop_reason;
       let state;
-      if (fresh) {
-        state = 'busy';                          // aktif yazım → çalışıyor
-      } else if (lastReal.type === 'user') {
-        state = 'busy';                          // prompt/tool-result → düşünüyor/akış
-      } else if (lastReal.message && lastReal.message.stop_reason === 'tool_use') {
-        // Assistant turn bir tool çağrısıyla bitti ve henüz sonuçlanmadı → seni bloke etti.
-        // Tool ADI soru araçlarındansa "sana soruyor", değilse (CPU boştaysa) "izin bekliyor".
-        const tn = lastToolName(lastReal.message);
+      if (lastRole === 'user') {
+        state = 'busy';                          // prompt/tool-result → düşünüyor
+      } else if (!sr) {
+        state = 'busy';                          // assistant akış hâlinde (henüz tamamlanmadı)
+      } else if (sr === 'tool_use') {
+        // Assistant turn bir tool çağrısıyla bitti, sonuçlanmadı → seni bloke etti.
+        const tn = lastToolName(msg);
         if (QUESTION_TOOLS.has(tn)) state = 'question';   // AskUserQuestion / plan onayı
         else state = cpuBusy ? 'busy' : 'permission';     // tool koşuyor mu, izin mi bekliyor
       } else {
@@ -439,7 +471,9 @@ class Engine extends EventEmitter {
   _readSessionMeta(pid) {
     try {
       const o = JSON.parse(fs.readFileSync(path.join(this.sessionsDir, pid + '.json'), 'utf8'));
-      return { sessionId: o.sessionId, status: o.status, kind: o.kind, name: o.name };
+      // waitingFor: Claude Code v2.1.199+ 'waiting' durumunda NEDEN durduğunu söyler
+      // ("permission prompt" vb). Bloke türünü (izin vs soru) transcript'ten daha kesin verir.
+      return { sessionId: o.sessionId, status: o.status, kind: o.kind, name: o.name, waitingFor: o.waitingFor };
     } catch { return null; }
   }
 
@@ -473,11 +507,15 @@ class Engine extends EventEmitter {
       for (const ln of lines) {
         if (!ln.trim()) continue;
         let o; try { o = JSON.parse(ln); } catch { continue; }
-        if (o.type !== 'user') continue;
+        if (convRole(o) !== 'user' || o.isMeta) continue; // yeni type:"message"'ı da al, meta'yı atla
         const c = o.message && o.message.content;
-        let text = typeof c === 'string' ? c : (Array.isArray(c) && c[0] && c[0].text) || '';
+        // ilk METİN bloğunu al (ilk blok image/tool_result olabilir)
+        let text = typeof c === 'string' ? c
+          : (Array.isArray(c) ? ((c.find((b) => b && b.type === 'text') || {}).text || '') : '');
         text = String(text).replace(/\s+/g, ' ').trim();
-        if (text) { label = shortLabel(text); break; }
+        // slash-komut yankısı / caveat gibi sentetik açılışları atla, gerçek prompt'a devam et
+        if (!text || /^<command-|^<local-command|^Caveat:/i.test(text)) continue;
+        label = shortLabel(text); break;
       }
     } catch { /* transient (locked/mid-write) — don't cache, retry next tick */ }
     if (ok) this._sidTopic.set(sid, label); // cache only successful reads (blank is fine — falls back)

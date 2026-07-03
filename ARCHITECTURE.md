@@ -6,8 +6,9 @@
 ## Responsibility
 
 One job: **detect the `claude.exe` sessions running on this machine, present their live state
-(working / waiting / compacting) in a minimal always-on-top bar, and jump to the right terminal window on
-click.** It does not _manage_ sessions (no start/stop) and does not read Claude's conversation content.
+(working / asking you / needs approval / idle / compacting) in a minimal always-on-top bar, and jump to the
+right terminal window on click.** It does not _manage_ sessions (no start/stop) and does not read Claude's
+conversation content (only structural signals — status, `stop_reason`, tool _names_ — never message text).
 
 ## Process topology
 
@@ -50,12 +51,15 @@ There is no direct "is Claude waiting for input?" signal from the outside, so Gl
 most authoritative first:
 
 1. **`~/.claude/sessions/<pid>.json`** (Claude Code v2.1.198+) — exact `sessionId` + live `status`
-   (`busy` → working, `idle` → waiting) + name. Authoritative; makes the heuristics a fallback.
+   (`busy` → working, `idle`, `compacting`) + name. Authoritative for busy-vs-idle; `idle` is then *refined* by
+   the transcript tail (see below) into `asking you` / `needs approval` / `idle`.
 2. **statusLine capture** (optional "rich data") — exact context-window % + account 5h/7d usage + cost, from the
    JSON Claude pipes to its statusLine command. Installed by Glance as a pure-PowerShell script (no `jq`) that
    **chains** the user's original statusLine.
-3. **Transcript tail** — completed assistant turn (`stop=end_turn`) while idle → waiting; a `user`/tool-result
-   entry or a recent write → working. Also yields context tokens.
+3. **Transcript tail** — splits an idle session by its last assistant turn (see [ADR 0012](docs/adr/0012-expanded-session-states.md)):
+   a pending `tool_use` whose **name** is `AskUserQuestion`/`ExitPlanMode` → **question** (asking you); any other
+   pending tool → **permission** (needs approval); `stop=end_turn` → **idle** (done); a `user`/tool-result entry
+   or a recent write → **working**. Only the tool *name* is read, never its content. Also yields context tokens.
 4. **CPU heuristic** (last resort) — a rolling window over per-tick CPU deltas; see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Reliability
@@ -77,14 +81,16 @@ most authoritative first:
 
 ## Ports / permissions
 
-- **No network.** No sockets are opened, no external calls are made.
+- **No network by default.** No sockets are opened, no external calls are made — except the **opt-in
+  auto-updater** (off by default), which checks GitHub Releases only when the user enables it (ADR 0011).
 - Permissions needed: reading the user's own processes (`PROCESS_VM_READ | QUERY_INFORMATION`) and window focus
   (`user32`). No admin required (for processes in the same user session).
 
 ## Distribution
 
-`npm start` for development; `npm run dist` builds a portable `.exe` with electron-builder. A GitHub Actions
-workflow builds and attaches it to a Release on a `v*` tag.
+`npm start` for development; `npm run dist` builds a **Windows installer (NSIS) + a portable `.exe`** with
+electron-builder (`--publish never`; the release step uploads). A GitHub Actions workflow builds and attaches
+them — plus `latest.yml` for the opt-in auto-updater — to a Release on a `v*` tag.
 
 ## Key decisions
 
