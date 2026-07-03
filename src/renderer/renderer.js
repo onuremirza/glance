@@ -205,6 +205,11 @@ menuEl.addEventListener('click', (e) => {
   if (!act || !menuTarget) return;
   if (act === 'focus') { if (menuTarget.hwnd) window.api.focus(menuTarget.hwnd); closeMenu(); maybeIgnore(); }
   if (act === 'rename') { closeMenu(); openRename(menuTarget); }
+  if (act === 'switch') {
+    // eski session'ı sonlandır, aynı konuşmayı yeni terminalde resume et
+    window.api.switchToTerminal({ pid: menuTarget.pid, sessionId: menuTarget.sessionId, cwd: menuTarget.cwd });
+    closeMenu(); maybeIgnore();
+  }
   if (act === 'hide') { window.api.hideSession(menuTarget.pid); closeMenu(); maybeIgnore(); }
   if (act === 'kill') { window.api.killSession(menuTarget.pid); closeMenu(); maybeIgnore(); }
 });

@@ -3,6 +3,22 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.5]
+
+### Added
+- **"Switch to terminal"** (sağ-tık menüsü). Session'ı sonlandırıp **aynı konuşmayı** kendi yeni PowerShell
+  penceresinde `claude --resume` ile açar — VS Code / Windows Terminal'de sekmeye odaklanamadığımız (OS sınırı)
+  durumlarda session'ı odaklanabilir bir pencereye taşımanın pratik yolu ([ADR 0013](docs/adr/0013-hide-bg-sessions-and-switch-to-terminal.md)).
+
+### Fixed
+- **Hayalet session.** Claude Code v2.1.199 arka plan job'ları (`kind:"bg"`) dot olarak görünüyordu ama
+  terminal penceresi olmadığından tıklanamıyor/kapatılamıyordu (kapatılınca job sistemi yeniden başlatıyordu).
+  Artık gizleniyor — Glance yalnızca etkileşimli terminal oturumlarını gösterir.
+- **Yanlış pencere odağı.** `BestWindow` ilk-eşleşen sığ yol segmentinde durup yanlış pencereyi seçebiliyordu
+  (ör. "Projects" derin "glance"'i ezerdi); artık en derin cwd segmentiyle eşleşen pencere seçiliyor.
+- Özel isimler (`byPid`) artık ölen pid'lerde budanıyor — config sonsuza dek büyümüyor ve PID geri
+  kullanımında eski isim yeni oturuma yapışmıyor.
+
 ## [0.2.4]
 
 ### Fixed

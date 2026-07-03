@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   setIgnore: (ignore) => ipcRenderer.send('set-ignore', ignore),
   newSession: () => ipcRenderer.send('new-session'),
   killSession: (pid) => ipcRenderer.send('kill-session', pid),
+  switchToTerminal: (payload) => ipcRenderer.send('switch-to-terminal', payload),
   hideSession: (pid) => ipcRenderer.send('hide-session', pid),
   onPopupClose: (cb) => ipcRenderer.on('popup-close', () => cb()),
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),

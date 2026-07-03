@@ -143,11 +143,12 @@ function enrichNames(list) {
 // hard requirement of this app). Starts in `settings.newSessionDir` (default:
 // home). `start "" ...` opens a detached window; the empty title arg keeps
 // `start` from misreading the program name as a window title.
+const PWSH = process.env.CSC_PWSH || 'pwsh'; // engine.resolvePwsh ile aynı override
 function openNewSession() {
   let dir = (config.settings && config.settings.newSessionDir) || os.homedir();
   if (!dir || !fs.existsSync(dir)) dir = os.homedir(); // stale/missing config dir → don't fail silently
   try {
-    const p = spawn('cmd.exe', ['/c', 'start', '', 'pwsh', '-NoExit', '-Command', 'claude'],
+    const p = spawn('cmd.exe', ['/c', 'start', '', PWSH, '-NoExit', '-Command', 'claude'],
       { cwd: dir, detached: true, stdio: 'ignore', windowsHide: false });
     p.unref();
   } catch (e) { console.error('new session failed', e); }
@@ -161,6 +162,26 @@ function killSession(pid) {
     const p = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
     p.unref();
   } catch (e) { console.error('kill failed', e); }
+}
+
+// "Switch to terminal": mevcut session'ı sonlandır ve AYNI konuşmayı kendi yeni
+// PowerShell penceresinde `claude --resume <sessionId>` ile aç. VS Code / Windows
+// Terminal sekmesine odaklanmak OS sınırı (ADR 0004) — bu, ona temiz bir kaçış yolu:
+// buried bir sekme yerine session'ı odaklanabilir kendi penceresine taşır.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function switchToTerminal({ pid, sessionId, cwd } = {}) {
+  const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
+  killSession(pid);
+  // sessionId yalnızca UUID ise komuta koy (shell-injection'a karşı); değilse en son konuşmayı sürdür
+  const cmd = UUID_RE.test(sessionId || '') ? `claude --resume ${sessionId}` : 'claude --continue';
+  // eski süreç tam ölsün de session dosyasını bırakmış olsun (çift-sahiplik olmasın)
+  setTimeout(() => {
+    try {
+      const p = spawn('cmd.exe', ['/c', 'start', '', PWSH, '-NoExit', '-Command', cmd],
+        { cwd: dir, detached: true, stdio: 'ignore', windowsHide: false });
+      p.unref();
+    } catch (e) { console.error('switch-to-terminal failed', e); }
+  }, 600);
 }
 
 // ---------- tray icon (generated, no asset file needed) ----------
@@ -269,6 +290,13 @@ function pushSessions() {
   // prune hidden pids that have since exited, then drop hidden ones from the view
   const live = new Set(lastSessions.map((s) => s.pid));
   for (const pid of [...hidden]) if (!live.has(pid)) hidden.delete(pid);
+  // Aynı şekilde ölmüş pid'lerin özel isimlerini (byPid) buda: aksi halde config
+  // sonsuza dek büyür ve Windows pid'i geri kullanınca yeni bir session eski ismi kapar.
+  let prunedNames = false;
+  for (const pid of Object.keys(config.byPid)) {
+    if (!live.has(parseInt(pid, 10))) { delete config.byPid[pid]; prunedNames = true; }
+  }
+  if (prunedNames) saveConfig();
   const enriched = enrichNames(lastSessions.filter((s) => !hidden.has(s.pid)));
   notifyTransitions(enriched);
   if (win && !win.isDestroyed()) win.webContents.send('sessions', enriched);
@@ -395,6 +423,8 @@ app.whenReady().then(() => {
   ipcMain.on('new-session', () => openNewSession());
 
   ipcMain.on('kill-session', (_e, pid) => killSession(pid));
+
+  ipcMain.on('switch-to-terminal', (_e, payload) => switchToTerminal(payload));
 
   ipcMain.on('hide-session', (_e, pid) => { hidden.add(parseInt(pid, 10)); pushSessions(); });
 

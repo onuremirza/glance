@@ -212,7 +212,7 @@ class Engine extends EventEmitter {
     const seen = new Set();
 
     const activeByPid = new Map(); // pid -> true if this tick's dCpu was active
-    const out = sessions.map((s) => {
+    let out = sessions.map((s) => {
       seen.add(s.pid);
       const prev = this._prev.get(s.pid);
       let status = 'new';
@@ -252,6 +252,7 @@ class Engine extends EventEmitter {
       metaSeen = true;
       if (meta.sessionId) s.sessionId = meta.sessionId;
       if (meta.name) s.claudeName = meta.name;
+      s.kind = meta.kind; // "interactive" | "bg" — bg'nin terminal penceresi yok (aşağıda süzülür)
       if (meta.status === 'compacting') { s.status = 'compacting'; s.stateSrc = 'claude'; }
       else if (meta.status === 'waiting') {
         // v2.1.199+: Claude "seni bekliyor" diyor; türü waitingFor'dan. Varsayılanı
@@ -271,6 +272,11 @@ class Engine extends EventEmitter {
       else if (meta.status === 'idle') { s.status = 'waiting'; s.stateSrc = 'claude'; }
     }
     this._metaSeen = metaSeen; // for the health indicator
+
+    // Arka plan job'larını (kind:"bg", Claude Code v2.1.199+) GİZLE: bir terminal
+    // penceresi yok → tıklanıp odaklanamaz/switch edilemez ve job sistemi öldürülünce
+    // yeniden başlatır ("hayalet session"). Glance yalnızca etkileşimli oturumları izler.
+    out = out.filter((s) => s.kind !== 'bg');
 
     // Prune dead pids (and their correlation state).
     for (const pid of [...this._prev.keys()]) if (!seen.has(pid)) this._prev.delete(pid);

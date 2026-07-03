@@ -55,7 +55,10 @@ public static class Native {
   // matches the session's cwd (VS Code shows the workspace folder; WT shows the
   // active tab dir) so the RIGHT project window is focused. Falls back to `fallback`.
   public static long BestWindow(int pid, string cwd, long fallback){
-    long found = 0;
+    // Tüm eş-pencereleri TARA ve EN DERİN cwd segmentiyle eşleşeni seç. İlk-eşleşmede
+    // durmak yanlış pencereyi seçebiliyordu: sığ bir segment ("Projects") derin olandan
+    // ("glance") önce enumere edilirse kazanıyordu. En spesifik (i büyük) eşleşme kazansın.
+    long best = 0; int bestScore = -1;
     string[] segs = (cwd ?? "").Split(new char[]{'\\','/'}, StringSplitOptions.RemoveEmptyEntries);
     EnumWindows((h, l) => {
       if(!IsWindowVisible(h)) return true;
@@ -67,11 +70,14 @@ public static class Native {
       GetWindowText(h, sb, sb.Capacity);
       string t = sb.ToString();
       for(int i=segs.Length-1; i>=0 && i>=segs.Length-3; i--){ // last up to 3 path segments
-        if(segs[i].Length > 2 && t.IndexOf(segs[i], StringComparison.OrdinalIgnoreCase) >= 0){ found=(long)h; return false; }
+        if(segs[i].Length > 2 && t.IndexOf(segs[i], StringComparison.OrdinalIgnoreCase) >= 0){
+          if(i > bestScore){ bestScore = i; best = (long)h; } // bu pencerenin en derin eşleşmesi; global en derini tut
+          break;
+        }
       }
-      return true;
+      return true; // erken çıkma — tüm pencereleri değerlendir
     }, IntPtr.Zero);
-    return found != 0 ? found : fallback;
+    return best != 0 ? best : fallback;
   }
 
   // Bring a window to the foreground. Never hides/closes: only restores if

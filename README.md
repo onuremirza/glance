@@ -22,7 +22,8 @@ at the top of your screen. Each session is a **dot**:
 - the **ring** around a dot = context window usage (workload)
 - the little bar on the pill = your account's **5-hour usage limit**
 - **hover** a dot for details (project, state, context %, cost, pid); **click** to bring its terminal window
-  forward; **right-click** to rename / hide / terminate; **`+`** to start a new session
+  forward; **right-click** to rename / **switch to terminal** (reopen the session in its own new window) /
+  hide / terminate; **`+`** to start a new session
 
 The purple/amber states answer "why did it stop?" at a glance — it's blocked on *you*. A desktop
 **notification** fires when a session needs you (asks a question / needs approval), so you don't have to keep
