@@ -56,7 +56,9 @@ document.addEventListener('mouseleave', () => {
 
 function stateLabel(status) {
   if (status === 'busy') return 'working';
-  if (status === 'waiting') return 'waiting';
+  if (status === 'question') return 'asking you';        // AskUserQuestion / plan onayı
+  if (status === 'permission') return 'needs approval';  // bir tool için izin bekliyor
+  if (status === 'waiting') return 'idle';               // turn bitti, sıradaki komutu bekliyor
   if (status === 'compacting') return 'compacting';
   return '...';
 }
@@ -81,9 +83,9 @@ function fmtAge(created) {
 
 // ---- tooltip ----
 function showTooltip(s, rect) {
-  const stateCls = s.status === 'busy' ? 't-state-busy'
-    : (s.status === 'waiting' ? 't-state-waiting'
-    : (s.status === 'compacting' ? 't-state-compacting' : ''));
+  // renk sınıfı durumla eşleşir (busy/question/permission/waiting/compacting)
+  const KNOWN = ['busy', 'question', 'permission', 'waiting', 'compacting'];
+  const stateCls = KNOWN.includes(s.status) ? `t-state-${s.status}` : '';
   tooltipEl.innerHTML =
     `<div class="t-name">${escapeHtml(s.name)}</div>` +
     `<div class="${stateCls}">● ${stateLabel(s.status)}${s.ctx ? ` <span class="t-sub">· context ${Math.round((s.ctxPct || 0) * 100)}% (${fmtTokens(s.ctx)})</span>` : ''}</div>` +
@@ -138,7 +140,7 @@ function render() {
       dot.dataset.pid = String(s.pid);
       wireDot(dot);
     }
-    dot.classList.remove('busy', 'waiting', 'new', 'compacting');
+    dot.classList.remove('busy', 'question', 'permission', 'waiting', 'new', 'compacting');
     dot.classList.add(s.status);
     dot._session = s;
     // context-usage ring (workload)

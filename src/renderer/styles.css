@@ -5,6 +5,11 @@
   --red: #ff4d4f;
   --red-glow: rgba(255, 77, 79, 0.55);
   --gray: #7a7f87;
+  --purple: #b06cff;                         /* sana soruyor / plan onayı */
+  --purple-glow: rgba(176, 108, 255, 0.6);
+  --amber: #ff9f43;                          /* izin bekliyor */
+  --amber-glow: rgba(255, 159, 67, 0.6);
+  --idle: #5a5f68;                           /* bitti/boşta — sönük, acil değil */
   --pill: rgba(20, 22, 26, 0.82);
   --text: #e8eaed;
   --sub: #9aa0a6;
@@ -335,10 +340,23 @@ body.vertical .hint { padding: 3px 0; text-align: center; }
   background: var(--green);
   box-shadow: 0 0 7px var(--green-glow);
 }
+/* Seni bloke eden durumlar nabızla dikkat çeker (aksiyon lazım). */
+.dot.question {
+  background: var(--purple);
+  --glow: var(--purple-glow);
+  box-shadow: 0 0 9px var(--purple-glow);
+  animation: pulse-attn 1.4s ease-in-out infinite;
+}
+.dot.permission {
+  background: var(--amber);
+  --glow: var(--amber-glow);
+  box-shadow: 0 0 9px var(--amber-glow);
+  animation: pulse-attn 1.4s ease-in-out infinite;
+}
+/* Bitti/boşta: sönük, nabız yok — acil değil, sıradaki komutu bekliyor. */
 .dot.waiting {
-  background: var(--red);
-  box-shadow: 0 0 9px var(--red-glow);
-  animation: pulse 1.4s ease-in-out infinite;
+  background: var(--idle);
+  box-shadow: none;
 }
 .dot.new { background: var(--gray); }
 .dot.compacting {
@@ -346,9 +364,9 @@ body.vertical .hint { padding: 3px 0; text-align: center; }
   box-shadow: 0 0 8px rgba(90,156,255,0.6);
 }
 
-@keyframes pulse {
-  0%,100% { box-shadow: 0 0 6px var(--red-glow); }
-  50%     { box-shadow: 0 0 14px var(--red-glow); }
+@keyframes pulse-attn {
+  0%,100% { box-shadow: 0 0 6px var(--glow); }
+  50%     { box-shadow: 0 0 14px var(--glow); }
 }
 
 .tooltip {
@@ -367,7 +385,9 @@ body.vertical .hint { padding: 3px 0; text-align: center; }
 }
 .tooltip .t-name { font-weight: 600; font-size: 12.5px; white-space: nowrap; }
 .tooltip .t-state-busy { color: var(--green); }
-.tooltip .t-state-waiting { color: var(--red); }
+.tooltip .t-state-question { color: var(--purple); }
+.tooltip .t-state-permission { color: var(--amber); }
+.tooltip .t-state-waiting { color: var(--sub); }
 .tooltip .t-state-compacting { color: #5a9cff; }
 .tooltip .t-sub { color: var(--sub); font-size: 10.5px; white-space: normal; word-break: break-all; }
 

@@ -274,18 +274,30 @@ function pushSessions() {
   if (win && !win.isDestroyed()) win.webContents.send('sessions', enriched);
 }
 
-// Desktop notification when a session flips busy → waiting (needs you). Only on
-// that transition, so it fires once and only for sessions you were watching work.
+// Desktop notification on meaningful transitions, fired once. En önemlisi: bir session
+// seni bloke ettiğinde (sana soruyor / izin bekliyor) haber ver — çünkü orada duruyor,
+// senden aksiyon bekliyor. Turn bitişi (boşta) daha hafif bir "done" bildirimi.
+const BLOCKED = (st) => st === 'question' || st === 'permission';
 function notifyTransitions(enriched) {
   const enabled = !config.settings || config.settings.notify !== false;
   const next = new Map();
+  const fire = (title, body, s) => {
+    try {
+      const n = new Notification({ title, body });
+      n.on('click', () => { if (s.hwnd) engine.focus(s.hwnd); });
+      n.show();
+    } catch { /* notifications unsupported */ }
+  };
   for (const s of enriched) {
-    if (enabled && prevStatus.get(s.pid) === 'busy' && s.status === 'waiting') {
-      try {
-        const n = new Notification({ title: 'Glance — waiting for you', body: s.name });
-        n.on('click', () => { if (s.hwnd) engine.focus(s.hwnd); });
-        n.show();
-      } catch { /* notifications unsupported */ }
+    const prev = prevStatus.get(s.pid);
+    if (enabled && prev !== undefined) {
+      if (BLOCKED(s.status) && !BLOCKED(prev)) {
+        // yeni blok: aksiyon lazım
+        const body = s.status === 'question' ? `${s.name} — asking you a question` : `${s.name} — needs your approval`;
+        fire('Glance — needs you', body, s);
+      } else if (s.status === 'waiting' && prev === 'busy') {
+        fire('Glance — done', s.name, s); // turn bitti, sıradaki komutu bekliyor
+      }
     }
     next.set(s.pid, s.status);
   }

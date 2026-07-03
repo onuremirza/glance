@@ -1,6 +1,6 @@
 {
   "name": "glance",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A minimal always-on-top overlay that shows running Claude Code sessions at a glance — status, context workload and usage limit (Windows).",
   "private": true,
   "main": "src/main.js",

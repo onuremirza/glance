@@ -3,6 +3,16 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.3]
+
+### Added
+- **Daha zengin durumlar.** Nokta artık "seni bekliyor"u ikiye ayırıyor: 🟣 **sana soruyor** (AskUserQuestion /
+  plan onayı) ve 🟠 **izin bekliyor** (bir tool için onay). 🟢 çalışıyor ve 🔵 compacting aynı; işi bitip boşta
+  bekleyen session artık ⚪ **sönük gri** (acil değil). Böylece "neden duruyor?" tek bakışta belli.
+  Transcript'ten türetilir (hook yok, yalnızca tool adı okunur — içerik değil; [ADR 0012](docs/adr/0012-expanded-session-states.md)).
+- Bir session seni bloke ettiğinde (soru/izin) **masaüstü bildirimi** ("asking you a question" / "needs your
+  approval"); turn bitişi daha hafif "done".
+
 ## [0.2.2]
 
 ### Changed

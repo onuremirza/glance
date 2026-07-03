@@ -24,6 +24,20 @@ function shortLabel(text) {
 }
 function capitalize(s) { return s ? s.charAt(0).toLocaleUpperCase('tr') + s.slice(1) : s; }
 
+// Bekleyen (sonuçlanmamış) bir assistant turn'ünün son tool_use ADINI döndür.
+// Yalnızca ad okunur — argüman/içerik (soru metni, plan, komut) OKUNMAZ (ilke #3):
+// "sana soruyor" (AskUserQuestion/ExitPlanMode) ile "izin bekliyor"u ayırmaya yeter.
+function lastToolName(msg) {
+  const c = msg && msg.content;
+  if (!Array.isArray(c)) return null;
+  for (let i = c.length - 1; i >= 0; i--) {
+    const b = c[i];
+    if (b && b.type === 'tool_use') return b.name || null;
+  }
+  return null;
+}
+const QUESTION_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']);
+
 // Context-window limit for the % ring. 1M-capable models (opus/sonnet 4+, [1m]
 // variants) → 1M, else 200k; if observed context exceeds the guess, bump (a
 // session can't hold more tokens than its window). Fixes wrong % for 1M sessions.
@@ -345,11 +359,16 @@ class Engine extends EventEmitter {
       }
       // Transcript fallback ONLY for what the authoritative sources didn't cover
       // (skips a per-tick 64KB read when Claude status + statusLine already gave us it).
+      // Claude 'idle' dediğinde (→'waiting') transcript ile RAFİNE ederiz: boşta mı,
+      // yoksa seni bloke mi etti (soru/izin). 'busy'/'compacting' kesin, dokunma.
       const needState = s.stateSrc !== 'claude';
-      if (needState || !haveCtx) {
+      const jsonIdle = s.stateSrc === 'claude' && s.status === 'waiting';
+      if (needState || jsonIdle || !haveCtx) {
         const st = this._sessionState(dir, sid, s.status === 'busy');
         if (st) {
           if (needState && st.state) { s.status = st.state; s.stateSrc = 'transcript'; }
+          // json 'idle' otoriter → yalnızca idle-ailesi (question/permission/waiting), busy'e döndürme
+          else if (jsonIdle && st.state && st.state !== 'busy') { s.status = st.state; s.stateSrc = 'claude+transcript'; }
           if (!haveCtx && st.ctxTokens != null) {
             s.ctx = st.ctxTokens;
             s.ctxPct = Math.min(1, st.ctxTokens / ctxLimit(st.model, st.ctxTokens));
@@ -398,13 +417,20 @@ class Engine extends EventEmitter {
       }
       if (!lastReal) return { state: null, ctxTokens, model };
       const fresh = (Date.now() - st.mtimeMs) < 2500;
-      const sr = lastReal.type === 'assistant' ? (lastReal.message && lastReal.message.stop_reason) : null;
-      const turnDone = sr === 'end_turn' || sr === 'stop_sequence' || sr === 'max_tokens';
       let state;
-      if (fresh) state = 'busy';                        // actively writing → working
-      else if (lastReal.type === 'user') state = 'busy'; // prompt/tool-result → thinking/streaming
-      else if (turnDone) state = 'waiting';             // idle + completed turn → needs you
-      else state = cpuBusy ? 'busy' : 'waiting';        // idle + tool_use → running vs awaiting permission
+      if (fresh) {
+        state = 'busy';                          // aktif yazım → çalışıyor
+      } else if (lastReal.type === 'user') {
+        state = 'busy';                          // prompt/tool-result → düşünüyor/akış
+      } else if (lastReal.message && lastReal.message.stop_reason === 'tool_use') {
+        // Assistant turn bir tool çağrısıyla bitti ve henüz sonuçlanmadı → seni bloke etti.
+        // Tool ADI soru araçlarındansa "sana soruyor", değilse (CPU boştaysa) "izin bekliyor".
+        const tn = lastToolName(lastReal.message);
+        if (QUESTION_TOOLS.has(tn)) state = 'question';   // AskUserQuestion / plan onayı
+        else state = cpuBusy ? 'busy' : 'permission';     // tool koşuyor mu, izin mi bekliyor
+      } else {
+        state = 'waiting';                       // end_turn/stop_sequence/max_tokens → bitti, boşta
+      }
       return { state, ctxTokens, model };
     } catch { return null; }
   }
