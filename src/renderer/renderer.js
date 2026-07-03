@@ -287,6 +287,13 @@ async function openSettings() {
   updatesSupported = !!(s && s.updatesSupported);
   if (s && s.update) lastUpdate = s.update;
   renderUpdatePanel();
+  // Auto-update açıksa panel açılınca taze kontrol et → son sürümdeysek buton
+  // kendiliğinden pasif "Update now" olur (elle "Check" gerekmez). Kapalıyken ağa
+  // çıkma (ilke #1). Süren indirme/mevcut güncellemeyi bozmamak için o durumlarda atla.
+  const ust = lastUpdate && lastUpdate.status;
+  if (updatesSupported && s && s.autoUpdate && ust !== 'downloading' && ust !== 'available' && ust !== 'ready') {
+    window.api.checkForUpdates();
+  }
   renderHealth();
   markOrient((s && s.orientation) || orientation);
   settingsEl.classList.remove('hidden');

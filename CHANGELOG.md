@@ -3,6 +3,13 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.2]
+
+### Changed
+- **Ayarlar açılınca otomatik güncelleme kontrolü** (yalnızca Auto-update açıkken). Böylece son sürümdeysen
+  "Update now" düğmesi elle "Check" gerektirmeden kendiliğinden **pasif** ("You're up to date") olur; güncelleme
+  varsa etkin kalır. Auto-update kapalıyken ağa çıkılmaz (elle "Check for updates").
+
 ## [0.2.1]
 
 ### Fixed
