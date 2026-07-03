@@ -141,7 +141,7 @@ function render() {
       wireDot(dot);
     }
     dot.classList.remove('busy', 'question', 'permission', 'waiting', 'new', 'compacting');
-    dot.classList.add(s.status);
+    dot.classList.add(s.status || 'new'); // boş status classList.add'i patlatmasın
     dot._session = s;
     // context-usage ring (workload)
     if (s.ctxPct != null) {
@@ -157,10 +157,12 @@ function render() {
 
   existing.forEach((c, pid) => { if (!wanted.has(pid)) c.remove(); });
 
-  // keep any open tooltip fresh
+  // keep any open tooltip fresh — hover ettiğin session kaybolduysa tooltip'i kapat
+  // (dot .remove() edilince mouseleave gelmez → yoksa hayalet tooltip asılı kalırdı)
   if (!tooltipEl.classList.contains('hidden') && hoverPid != null) {
     const s = sessions.find((x) => x.pid === hoverPid);
     if (s && lastHoverRect) showTooltip(s, lastHoverRect);
+    else { hideTooltip(); hoverPid = null; }
   }
 }
 
@@ -206,8 +208,13 @@ menuEl.addEventListener('click', (e) => {
   if (act === 'focus') { if (menuTarget.hwnd) window.api.focus(menuTarget.hwnd); closeMenu(); maybeIgnore(); }
   if (act === 'rename') { closeMenu(); openRename(menuTarget); }
   if (act === 'switch') {
-    // eski session'ı sonlandır, aynı konuşmayı yeni terminalde resume et
-    window.api.switchToTerminal({ pid: menuTarget.pid, sessionId: menuTarget.sessionId, cwd: menuTarget.cwd });
+    // pencere paylaşılıyor mu? (VS Code/WT: aynı hwnd birden çok session'da → sekme,
+    // pencereyi kapatamayız). main buna göre WM_CLOSE ya da kill seçer.
+    const shared = !!menuTarget.hwnd && sessions.filter((s) => s.hwnd === menuTarget.hwnd).length > 1;
+    window.api.switchToTerminal({
+      pid: menuTarget.pid, hwnd: menuTarget.hwnd, host: menuTarget.host, sharedWindow: shared,
+      sessionId: menuTarget.sessionId, cwd: menuTarget.cwd,
+    });
     closeMenu(); maybeIgnore();
   }
   if (act === 'hide') { window.api.hideSession(menuTarget.pid); closeMenu(); maybeIgnore(); }
@@ -413,6 +420,7 @@ window.api.onOrientation((o) => {
 document.addEventListener('click', (e) => {
   if (!menuEl.contains(e.target)) closeMenu();
   if (!settingsEl.contains(e.target)) closeSettings();
+  maybeIgnore(); // popup boş alana tıklanıp kapanınca capture'ı bırak (yoksa masaüstü tıkları bloke olurdu)
 });
 window.api.onPopupClose(() => { closeMenu(); closeRename(); closeSettings(); maybeIgnore(); });
 window.api.onStatus((s) => { statusErr = s.ok ? '' : (s.msg || 'hata'); render(); });

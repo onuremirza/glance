@@ -47,6 +47,7 @@ public static class Native {
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
   public delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
 
@@ -94,6 +95,15 @@ public static class Native {
     bool ok = SetForegroundWindow(h);
     if(attached) AttachThreadInput(cur, fg, false);
     return ok;
+  }
+
+  // Terminal penceresini NAZİKÇE kapat (X'e basmak gibi): WM_CLOSE. TUI'yi taskkill /F
+  // ile öldürüp terminali bozuk raw-mode'da bırakmaz → spam olmaz. Dedike pencerede
+  // temiz kapanır. (Paylaşılan host'a göndermemek çağıranın sorumluluğu.)
+  public static bool Close(long hwnd){
+    IntPtr h=(IntPtr)hwnd;
+    if(h==IntPtr.Zero || !IsWindow(h)) return false;
+    return PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero); // WM_CLOSE
   }
 }
 '@
@@ -177,6 +187,10 @@ while ($true) {
       $hwnd = 0; [void][int64]::TryParse($line.Substring(6), [ref]$hwnd)
       $ok = [Native]::Focus($hwnd)
       [Console]::Out.WriteLine("FOCUS:" + ($(if ($ok) { "ok" } else { "err" })))
+    } elseif ($line.StartsWith("CLOSE:")) {
+      $hwnd = 0; [void][int64]::TryParse($line.Substring(6), [ref]$hwnd)
+      $ok = [Native]::Close($hwnd)
+      [Console]::Out.WriteLine("CLOSE:" + ($(if ($ok) { "ok" } else { "err" })))
     } elseif ($line -eq "EXIT") {
       break
     }

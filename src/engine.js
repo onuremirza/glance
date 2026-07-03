@@ -544,6 +544,14 @@ class Engine extends EventEmitter {
     });
   }
 
+  // Bir terminal penceresini nazikçe kapat (WM_CLOSE). Fire-and-forget; yanıtı
+  // ('CLOSE:ok') önemsemeyiz. "Switch to terminal"da barındıran pencereyi temiz
+  // kapatmak için (taskkill /F yerine → terminal bozulmaz, spam olmaz).
+  closeWindow(hwnd) {
+    if (!this.ready || !this.proc || !hwnd) return false;
+    try { this.proc.stdin.write('CLOSE:' + hwnd + '\n'); return true; } catch { return false; }
+  }
+
   stop() {
     this._stopped = true;
     if (this._timer) clearTimeout(this._timer);

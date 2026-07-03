@@ -164,24 +164,66 @@ function killSession(pid) {
   } catch (e) { console.error('kill failed', e); }
 }
 
-// "Switch to terminal": mevcut session'ı sonlandır ve AYNI konuşmayı kendi yeni
-// PowerShell penceresinde `claude --resume <sessionId>` ile aç. VS Code / Windows
-// Terminal sekmesine odaklanmak OS sınırı (ADR 0004) — bu, ona temiz bir kaçış yolu:
-// buried bir sekme yerine session'ı odaklanabilir kendi penceresine taşır.
+// "Switch to terminal": mevcut session'ı BARINDIRAN terminali kapat ve AYNI konuşmayı
+// kendi yeni PowerShell penceresinde `claude --resume <sessionId>` ile aç. VS Code /
+// Windows Terminal sekmesine odaklanmak OS sınırı (ADR 0004) — bu, ona temiz kaçış yolu.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function switchToTerminal({ pid, sessionId, cwd } = {}) {
+
+// Session'ın diskte resume edilebilir bir konuşması var mı? (Taze/idle bir session'da
+// yoktur → `claude --resume` "No conversation found" der; o durumda taze başlatırız.)
+function hasConversation(sessionId, cwd) {
+  try {
+    const enc = (cwd || '').replace(/[\\/:]/g, '-'); // engine._projectDir ile aynı kodlama
+    return fs.existsSync(path.join(os.homedir(), '.claude', 'projects', enc, sessionId + '.jsonl'));
+  } catch { return false; }
+}
+
+// WM_CLOSE YALNIZ dedike konsol penceresinde güvenli (o pencere = o terminal, kapatınca
+// yalnız o kapanır). WT / VS Code / cursor gibi MULTIPLEXER host'larda pencere paylaşılır
+// → WM_CLOSE tüm editörü/başka sekmeleri kapatır (felaket) → oralarda ASLA, yalnız kill.
+const DEDICATED_HOST = /^(conhost|pwsh|powershell|cmd)\.exe$/i;
+
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } }; // ESRCH → yok
+// Bir pid gerçekten ölene kadar bekle (WM_CLOSE'un OS grace süresi var), sonra done(stillAlive).
+function waitPidGone(pid, timeoutMs, done) {
+  const start = Date.now();
+  const tick = () => {
+    if (!pidAlive(pid)) return done(false);
+    if (Date.now() - start >= timeoutMs) return done(true); // hâlâ yaşıyor (WM_CLOSE başarısız?)
+    setTimeout(tick, 250);
+  };
+  setTimeout(tick, 250);
+}
+
+function switchToTerminal({ pid, hwnd, host, sharedWindow, sessionId, cwd } = {}) {
+  pid = parseInt(pid, 10);
+  // Yalnız İZLENEN bir session üzerinde çalış (renderer'dan gelen pid/hwnd doğrula).
+  const tracked = lastSessions.find((s) => s.pid === pid);
+  if (!tracked) return;
   const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
-  killSession(pid);
-  // sessionId yalnızca UUID ise komuta koy (shell-injection'a karşı); değilse en son konuşmayı sürdür
-  const cmd = UUID_RE.test(sessionId || '') ? `claude --resume ${sessionId}` : 'claude --continue';
-  // eski süreç tam ölsün de session dosyasını bırakmış olsun (çift-sahiplik olmasın)
-  setTimeout(() => {
+  // Konuşma varsa aynı session'ı resume et; yoksa taze `claude` (resume hatası olmasın).
+  const resumable = UUID_RE.test(sessionId || '') && hasConversation(sessionId, dir);
+  const cmd = resumable ? `claude --resume ${sessionId}` : 'claude';
+  // Eski terminali kapat: dedike konsolsa pencereyi WM_CLOSE ile nazikçe kapat (X gibi —
+  // TUI'yi /F ile öldürüp terminali bozup SPAM yapmaz). Multiplexer host / paylaşılan
+  // pencere / kapatma teslim edilemedi → yalnız claude.exe'yi öldür (sekme kalır).
+  const canClose = hwnd && hwnd === tracked.hwnd && !sharedWindow && DEDICATED_HOST.test(host || '') && engine;
+  const closed = canClose ? engine.closeWindow(hwnd) : false;
+  if (!closed) killSession(pid);
+  // Eski süreç TAM ölene kadar bekle, SONRA resume et — aksi halde iki süreç aynı session
+  // dosyasına yazıp bozar / resume başarısız olur. 6s'de hâlâ yaşıyorsa (WM_CLOSE sessizce
+  // başarısız) son çare öldür, sonra aç.
+  const openResume = () => {
     try {
       const p = spawn('cmd.exe', ['/c', 'start', '', PWSH, '-NoExit', '-Command', cmd],
         { cwd: dir, detached: true, stdio: 'ignore', windowsHide: false });
       p.unref();
     } catch (e) { console.error('switch-to-terminal failed', e); }
-  }, 600);
+  };
+  waitPidGone(pid, 6000, (stillAlive) => {
+    if (stillAlive) { killSession(pid); setTimeout(openResume, 600); } // son çare kill + kısa bekle
+    else openResume();
+  });
 }
 
 // ---------- tray icon (generated, no asset file needed) ----------

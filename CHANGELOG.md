@@ -3,6 +3,22 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.6]
+
+### Fixed
+- **"Switch to terminal" düzgün çalışmıyordu.** (1) Taze/idle bir session'ın konuşması yoksa `claude --resume`
+  "No conversation found" veriyordu → artık konuşma varsa resume, yoksa taze `claude`. (2) TUI'yi `taskkill /F`
+  ile öldürmek barındıran terminali bozup **spam** yapıyordu → artık **dedike konsol** penceresi WM_CLOSE ile
+  nazikçe kapatılıyor (X'e basmak gibi).
+- **KRİTİK güvenlik:** WM_CLOSE yalnızca **dedike konsol host'unda** (conhost/pwsh/cmd) uygulanıyor. VS Code /
+  Windows Terminal gibi multiplexer'da tek session olsa bile pencere kapatmak **tüm editörü/başka sekmeleri**
+  kapatabilirdi → o host'larda artık yalnızca session süreci sonlandırılıyor.
+- Switch, resume'u ancak **eski süreç tam ölünce** açıyor (WM_CLOSE'un OS grace süresi var; yoksa iki süreç
+  aynı konuşmayı açıp bozabilirdi); kapatma teslim edilemezse süreç öldürmeye düşüyor. pid/hwnd izlenen bir
+  session'a ait mi doğrulanıyor.
+- Overlay: hover edilen session kaybolunca **hayalet tooltip** asılı kalmıyor; popup'ı boş alana tıklayıp
+  kapatınca fare yakalama bırakılıyor (masaüstü tıkları bloke olmuyor).
+
 ## [0.2.5]
 
 ### Added
