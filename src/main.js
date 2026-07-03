@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 const { Engine } = require('./engine');
 
 let win = null;
@@ -291,6 +292,49 @@ function notifyTransitions(enriched) {
   prevStatus = next;
 }
 
+// ---------- auto-update (opt-in; bkz. ADR 0011) ----------
+// İlke #1 (ağ yok) burada bilinçli ve dar biçimde gevşetilir: yalnızca GitHub
+// Releases'e sürüm kontrolü + indirme. Telemetri/kullanım verisi gitmez. Varsayılan
+// KAPALI (config.settings.autoUpdate). Kapalıyken hiç ağa çıkılmaz; kullanıcı ayardan
+// açar ya da "Update now" ile elle tetikler (ilke #4: eylemi kullanıcı başlatır).
+// Portable exe ve dev modu kendini güncelleyemez → updater tamamen devre dışı.
+const PORTABLE = !!process.env.PORTABLE_EXECUTABLE_DIR;
+const updatesSupported = app.isPackaged && !PORTABLE;
+let updateState = { status: 'idle', version: null, progress: 0, error: null, supported: updatesSupported };
+let installWhenReady = false; // "Update now" tıklandı → indirme bitince otomatik kur
+
+function sendUpdate() {
+  if (win && !win.isDestroyed()) win.webContents.send('update', updateState);
+}
+function setUpdate(patch) { updateState = { ...updateState, ...patch }; sendUpdate(); }
+
+function initUpdater() {
+  if (!updatesSupported) return;
+  autoUpdater.autoDownload = false;         // arka plan kontrolü İNDİRMEZ; indirme yalnızca açık eylemle
+  autoUpdater.autoInstallOnAppQuit = false; // kurulum yalnızca açık kullanıcı eylemiyle
+  autoUpdater.on('checking-for-update', () => setUpdate({ status: 'checking', error: null }));
+  autoUpdater.on('update-available', (info) => {
+    setUpdate({ status: 'available', version: info && info.version });
+    if (installWhenReady) startDownload();
+  });
+  autoUpdater.on('update-not-available', () => setUpdate({ status: 'none' }));
+  autoUpdater.on('download-progress', (p) => setUpdate({ status: 'downloading', progress: Math.round((p && p.percent) || 0) }));
+  autoUpdater.on('update-downloaded', (info) => {
+    setUpdate({ status: 'ready', version: info && info.version });
+    if (installWhenReady) { installWhenReady = false; try { autoUpdater.quitAndInstall(); } catch (e) { console.error(e); } }
+  });
+  autoUpdater.on('error', (err) => setUpdate({ status: 'error', error: String((err && err.message) || err) }));
+}
+
+function checkForUpdates() {
+  if (!updatesSupported) return;
+  try { autoUpdater.checkForUpdates(); } catch (e) { setUpdate({ status: 'error', error: String(e.message || e) }); }
+}
+function startDownload() {
+  if (!updatesSupported) return;
+  try { autoUpdater.downloadUpdate(); } catch (e) { setUpdate({ status: 'error', error: String(e.message || e) }); }
+}
+
 app.whenReady().then(() => {
   if (!gotLock) return;
   app.setAppUserModelId('com.glance.overlay'); // required for Windows notifications
@@ -311,6 +355,14 @@ app.whenReady().then(() => {
     if (win && !win.isDestroyed()) win.webContents.send('status', s);
   });
   engine.start();
+
+  // Güncelleme: yalnızca opt-in açıkken başlangıçta + periyodik kontrol (sarı nokta için).
+  // Kapalıyken hiçbir ağ çağrısı yapılmaz; sadece elle "Update now" tetikler.
+  initUpdater();
+  if (config.settings.autoUpdate === true) {
+    setTimeout(checkForUpdates, 4000); // pencere yüklensin ki nokta gösterilebilsin
+    setInterval(checkForUpdates, 6 * 60 * 60 * 1000); // 6 saatte bir
+  }
 
   // ---------- IPC ----------
   ipcMain.handle('focus', async (_e, hwnd) => engine.focus(hwnd));
@@ -340,6 +392,9 @@ app.whenReady().then(() => {
     notify: !config.settings || config.settings.notify !== false, // default on
     richData: richDataEnabled(),
     openAtLogin: app.getLoginItemSettings().openAtLogin,
+    autoUpdate: config.settings.autoUpdate === true, // default off
+    updatesSupported,
+    update: updateState,
   }));
 
   ipcMain.on('set-notify', (_e, on) => { config.settings.notify = !!on; saveConfig(); });
@@ -356,6 +411,25 @@ app.whenReady().then(() => {
 
   ipcMain.on('set-open-at-login', (_e, on) => {
     app.setLoginItemSettings({ openAtLogin: !!on });
+  });
+
+  // Otomatik güncelleme anahtarı: açınca hemen bir kontrol yap (nokta belirebilsin).
+  ipcMain.on('set-auto-update', (_e, on) => {
+    config.settings.autoUpdate = !!on;
+    saveConfig();
+    if (on) checkForUpdates();
+  });
+
+  // Elle kontrol (açık kullanıcı eylemi — opt-in kapalı olsa da çalışır).
+  ipcMain.handle('check-for-updates', () => { installWhenReady = false; checkForUpdates(); return updateState; });
+
+  // "Update now": hazırsa kur; değilse indir (gerekirse önce kontrol et), bitince kur.
+  ipcMain.on('install-update', () => {
+    if (!updatesSupported) return;
+    if (updateState.status === 'ready') { try { autoUpdater.quitAndInstall(); } catch (e) { console.error(e); } return; }
+    installWhenReady = true;
+    if (updateState.status === 'available') startDownload();
+    else checkForUpdates(); // 'available' değil → kontrol et; event zinciri indirip kurar
   });
 
   ipcMain.on('reset-position', () => {

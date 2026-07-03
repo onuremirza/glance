@@ -5,6 +5,8 @@
   --red: #ff4d4f;
   --red-glow: rgba(255, 77, 79, 0.55);
   --gray: #7a7f87;
+  --amber: #f5b301;
+  --amber-glow: rgba(245, 179, 1, 0.6);
   --pill: rgba(20, 22, 26, 0.82);
   --text: #e8eaed;
   --sub: #9aa0a6;
@@ -115,6 +117,33 @@ html, body {
   color: #fff;
   box-shadow: 0 0 10px var(--green-glow);
 }
+
+/* Güncelleme rozeti: ayar kümesinin köşesinde, hover gerektirmeden görünen küçük
+   amber nokta. Kullanıcı "orada bir bildirim var" diye anlasın; tıklayınca ayarlar açılır. */
+.update-dot {
+  position: absolute;   /* out of flow → görünmesi dot'ları kaydırmaz */
+  right: 100%;          /* pill'in sol kenarında (ayar dişlisinin bulunduğu taraf) */
+  top: 0;
+  margin-right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber-glow);
+  cursor: pointer;
+  animation: update-pulse 1.8s ease-in-out infinite;
+}
+.update-dot.hidden { display: none; }
+@keyframes update-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--amber-glow); }
+  50%      { box-shadow: 0 0 9px var(--amber-glow); }
+}
+body.vertical .update-dot { right: auto; left: 0; top: -2px; margin: 0; }
+
+/* Ayarlar panelindeki güncelleme durum satırı */
+.update-status { margin-top: 6px; font-size: 10px; color: var(--sub); min-height: 12px; }
+.update-status.err { color: var(--red); }
+.update-status.ok  { color: var(--green); }
 
 /* Left control cluster: collapsed at rest, grows to the left on hover (mirror
    of the "+"). Holds settings / move / close. */

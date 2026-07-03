@@ -3,6 +3,22 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.0]
+
+### Added
+- **Opt-in otomatik güncelleme.** Ayarlarda "Auto-update" anahtarı (varsayılan **kapalı**) ve "Update now"
+  düğmesi. Açıkken başlangıçta + 6 saatte bir GitHub Releases'e bakar; güncelleme varsa ayar dişlisinin
+  üstünde **sarı bildirim noktası** belirir (noktaya tıkla → ayarlar). Kapalıyken sıfır ağ çağrısı; "Update
+  now" yalnızca tıklanınca kontrol eder. İndirme/kurulum hep açık kullanıcı eylemiyle. Yalnızca kurulan
+  (NSIS) sürümde; portable/dev kendini güncellemez. Gizlilik ilkesinin dar istisnası —
+  [ADR 0011](docs/adr/0011-opt-in-auto-update.md). (`electron-updater`, native derleme yok.)
+
+### Packaging
+- **Kurulum paketi (NSIS).** `npm run dist` artık portable exe'nin yanında bir kurulum paketi
+  (`Glance-<version>-Setup.exe`) da üretir. Kurulum masaüstü + Start menü kısayolu oluşturur (Windows
+  aramasında görünür) ve "Uygulamalar & özellikler" listesine kaldırma kaydı ekler. Kullanıcı bazlı kurulum
+  (yönetici/UAC istemez), tek tık akışı.
+
 ## [0.1.0]
 
 First public release. A minimal always-on-top Windows overlay that shows running Claude Code sessions as dots.

@@ -1,13 +1,13 @@
 {
   "name": "glance",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A minimal always-on-top overlay that shows running Claude Code sessions at a glance — status, context workload and usage limit (Windows).",
   "private": true,
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis portable"
   },
   "keywords": [
     "claude-code",
@@ -33,6 +33,13 @@
   "build": {
     "appId": "com.glance.overlay",
     "productName": "Glance",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "onuremirza",
+        "repo": "glance"
+      }
+    ],
     "files": [
       "src/**/*",
       "assets/**/*",
@@ -42,13 +49,30 @@
       "**/*.ps1"
     ],
     "win": {
-      "target": "portable",
-      "icon": "assets/icon.ico",
-      "artifactName": "Glance-${version}-portable.exe"
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
     },
     "portable": {
-      "unpackDirName": "glance"
+      "unpackDirName": "glance",
+      "artifactName": "Glance-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Glance",
+      "runAfterFinish": true,
+      "artifactName": "Glance-${version}-Setup.exe",
+      "uninstallDisplayName": "Glance"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^33.2.0",

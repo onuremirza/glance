@@ -12,7 +12,13 @@ const setStartup = document.getElementById('set-startup');
 const setNotify = document.getElementById('set-notify');
 const setRich = document.getElementById('set-rich');
 const panelHealth = document.getElementById('panel-health');
+const setAutoUpdate = document.getElementById('set-autoupdate');
+const updateBtn = document.getElementById('set-update-btn');
+const updateStatusEl = document.getElementById('update-status');
+const updateDot = document.getElementById('update-dot');
 let lastHealth = null;
+let lastUpdate = null;          // son güncelleme durumu (main'den 'update' olayı)
+let updatesSupported = false;   // portable/dev'de false → update UI gizli
 
 const orientSeg = document.getElementById('set-orient');
 
@@ -278,6 +284,10 @@ async function openSettings() {
   setStartup.checked = !!(s && s.openAtLogin);
   setNotify.checked = !(s && s.notify === false);
   setRich.checked = !!(s && s.richData);
+  setAutoUpdate.checked = !!(s && s.autoUpdate);
+  updatesSupported = !!(s && s.updatesSupported);
+  if (s && s.update) lastUpdate = s.update;
+  renderUpdatePanel();
   renderHealth();
   markOrient((s && s.orientation) || orientation);
   settingsEl.classList.remove('hidden');
@@ -306,6 +316,72 @@ function renderHealth() {
     `<span class="${h.statusline ? 'ok' : 'bad'}">${ok(h.statusline)} statusLine</span>`;
 }
 window.api.onHealth((h) => { lastHealth = h; if (!settingsEl.classList.contains('hidden')) renderHealth(); });
+
+// ---- güncelleme durumu ----
+// Sarı nokta: güncelleme hazır/mevcut olduğunda hover gerektirmeden görünür.
+function renderUpdateDot() {
+  const st = lastUpdate && lastUpdate.status;
+  const show = st === 'available' || st === 'ready';
+  updateDot.classList.toggle('hidden', !show);
+}
+// Ayarlar panelindeki anahtar + düğme + durum satırı (duruma göre bağlamsal).
+function renderUpdatePanel() {
+  const row = document.getElementById('row-auto-update');
+  if (!updatesSupported) {
+    row.classList.add('hidden');
+    updateBtn.classList.add('hidden');
+    updateStatusEl.textContent = 'Updates: portable/dev sürümünde kapalı.';
+    updateStatusEl.className = 'update-status';
+    return;
+  }
+  row.classList.remove('hidden');
+  updateBtn.classList.remove('hidden');
+  const u = lastUpdate || { status: 'idle' };
+  const v = u.version ? ` (${u.version})` : '';
+  updateStatusEl.className = 'update-status';
+  updateBtn.disabled = false;
+  switch (u.status) {
+    case 'checking':
+      updateBtn.textContent = 'Checking…'; updateBtn.disabled = true;
+      updateStatusEl.textContent = 'Checking for updates…'; break;
+    case 'available':
+      updateBtn.textContent = 'Update now';
+      updateStatusEl.textContent = `Update available${v}`; break;
+    case 'downloading':
+      updateBtn.textContent = `Downloading ${u.progress || 0}%`; updateBtn.disabled = true;
+      updateStatusEl.textContent = `Downloading update${v}…`; break;
+    case 'ready':
+      updateBtn.textContent = 'Restart & install';
+      updateStatusEl.textContent = `Update ready${v} — restart to apply`;
+      updateStatusEl.classList.add('ok'); break;
+    case 'none':
+      updateBtn.textContent = 'Check for updates';
+      updateStatusEl.textContent = "You're up to date.";
+      updateStatusEl.classList.add('ok'); break;
+    case 'error':
+      updateBtn.textContent = 'Retry';
+      updateStatusEl.textContent = `Update failed: ${u.error || 'unknown'}`;
+      updateStatusEl.classList.add('err'); break;
+    default: // idle
+      updateBtn.textContent = 'Check for updates';
+      updateStatusEl.textContent = '';
+  }
+}
+window.api.onUpdate((u) => {
+  lastUpdate = u;
+  if (u && typeof u.supported === 'boolean') updatesSupported = u.supported;
+  renderUpdateDot();
+  if (!settingsEl.classList.contains('hidden')) renderUpdatePanel();
+});
+setAutoUpdate.addEventListener('change', () => window.api.setAutoUpdate(setAutoUpdate.checked));
+updateBtn.addEventListener('click', () => {
+  if (!updatesSupported) return;
+  const st = lastUpdate && lastUpdate.status;
+  if (st === 'available' || st === 'ready') window.api.installUpdate();
+  else window.api.checkForUpdates(); // idle / none / error → yeniden kontrol
+});
+// Sarı noktaya tıkla → ayarları aç (kullanıcı "Update now"ı bulsun)
+updateDot.addEventListener('click', (e) => { e.stopPropagation(); openSettings(); });
 document.getElementById('set-center').addEventListener('click', () => window.api.resetPosition());
 orientSeg.addEventListener('click', (e) => {
   const o = e.target.dataset.o;

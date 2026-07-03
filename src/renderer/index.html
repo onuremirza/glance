@@ -15,6 +15,8 @@
         <button id="c-close" class="ctrl danger" title="Close">✕</button>
       </div>
       <span id="hint" class="hint hidden">no sessions</span>
+      <!-- Güncelleme rozeti: ayar dişlisinin üstünde sarı nokta; hover gerektirmez -->
+      <span id="update-dot" class="update-dot hidden" title="Update available — open Settings"></span>
       <button id="add" class="add" title="New session">+</button>
       <div id="usage" class="usage hidden" title=""><span id="usage-fill" class="usage-fill"></span></div>
     </div>
@@ -52,6 +54,15 @@
       </div>
     </div>
     <button id="set-center" class="panel-btn">Center position</button>
+    <div class="panel-item" id="row-auto-update">
+      <span title="Startup'ta güncelleme kontrol eder ve varsa nokta gösterir. Kapalıyken hiç ağa çıkılmaz.">Auto-update</span>
+      <label class="switch">
+        <input id="set-autoupdate" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <button id="set-update-btn" class="panel-btn">Check for updates</button>
+    <div id="update-status" class="update-status"></div>
     <div id="panel-health" class="panel-health"></div>
   </div>
 
