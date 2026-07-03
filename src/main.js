@@ -23,7 +23,7 @@ if (!gotLock) app.quit();
 // wide+short (popups open downward). Vertical: narrow-ish+tall (dots stack, popups
 // open to the right). Generous so popups/tooltips aren't clipped.
 const SIZE = {
-  horizontal: { w: 560, h: 300 }, // tall enough for the settings panel (opens downward)
+  horizontal: { w: 560, h: 460 }, // tall enough for the settings panel (opens downward, ~421px)
   vertical: { w: 400, h: 560 },
 };
 function orientation() {

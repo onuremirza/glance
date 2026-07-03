@@ -3,6 +3,20 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.2.1]
+
+### Fixed
+- **Ayarlar paneli kırpılması.** Auto-update öğeleri eklendikten sonra panel pencere yüksekliğini aşıp
+  alttan kesiliyordu (Update now / durum / health görünmüyordu). Pencere yüksekliği panele göre ayarlandı;
+  panele ayrıca taşma güvenliği (max-height + scroll) eklendi.
+- **Yan kontrollerin görünürlüğü.** Ayarlar/taşı/kapat ve `+` düğmeleri pill'in dışında, saydam pencere
+  alanında açıldığından parlak masaüstünde görünmüyordu → koyu daire arka plan + gölge ile her zeminde okunur.
+
+### Changed
+- **Güncelleme bildirimi sadeleştirildi.** Güncelleme durumu yalnızca Ayarlar panelinde görünür (Auto-update
+  anahtarı + "Update now" + durum satırı); ayrı bir overlay göstergesi yok. Buton bağlamsal: kontrol sonrası
+  güncelleme yoksa pasif "Update now".
+
 ## [0.2.0]
 
 ### Added

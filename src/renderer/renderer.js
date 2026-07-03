@@ -15,7 +15,6 @@ const panelHealth = document.getElementById('panel-health');
 const setAutoUpdate = document.getElementById('set-autoupdate');
 const updateBtn = document.getElementById('set-update-btn');
 const updateStatusEl = document.getElementById('update-status');
-const updateDot = document.getElementById('update-dot');
 let lastHealth = null;
 let lastUpdate = null;          // son güncelleme durumu (main'den 'update' olayı)
 let updatesSupported = false;   // portable/dev'de false → update UI gizli
@@ -294,7 +293,14 @@ async function openSettings() {
   if (orientation === 'vertical') { settingsEl.style.left = '60px'; settingsEl.style.top = '8px'; }
   else { settingsEl.style.left = '8px'; settingsEl.style.top = '40px'; }
 }
-function closeSettings() { settingsEl.classList.add('hidden'); }
+function closeSettings() {
+  settingsEl.classList.add('hidden');
+  // 'none'/'error' geçici durumlar: panel kapanınca idle'a dön ki yeniden açınca
+  // pasif "Update now" değil tekrar "Check for updates" görünsün. (available/ready kalır.)
+  if (lastUpdate && (lastUpdate.status === 'none' || lastUpdate.status === 'error')) {
+    lastUpdate = { ...lastUpdate, status: 'idle' };
+  }
+}
 
 function markOrient(o) {
   [...orientSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.o === o));
@@ -318,12 +324,6 @@ function renderHealth() {
 window.api.onHealth((h) => { lastHealth = h; if (!settingsEl.classList.contains('hidden')) renderHealth(); });
 
 // ---- güncelleme durumu ----
-// Sarı nokta: güncelleme hazır/mevcut olduğunda hover gerektirmeden görünür.
-function renderUpdateDot() {
-  const st = lastUpdate && lastUpdate.status;
-  const show = st === 'available' || st === 'ready';
-  updateDot.classList.toggle('hidden', !show);
-}
 // Ayarlar panelindeki anahtar + düğme + durum satırı (duruma göre bağlamsal).
 function renderUpdatePanel() {
   const row = document.getElementById('row-auto-update');
@@ -354,15 +354,15 @@ function renderUpdatePanel() {
       updateBtn.textContent = 'Restart & install';
       updateStatusEl.textContent = `Update ready${v} — restart to apply`;
       updateStatusEl.classList.add('ok'); break;
-    case 'none':
-      updateBtn.textContent = 'Check for updates';
+    case 'none': // kontrol edildi, güncelleme yok → "Update now" pasif
+      updateBtn.textContent = 'Update now'; updateBtn.disabled = true;
       updateStatusEl.textContent = "You're up to date.";
       updateStatusEl.classList.add('ok'); break;
     case 'error':
       updateBtn.textContent = 'Retry';
       updateStatusEl.textContent = `Update failed: ${u.error || 'unknown'}`;
       updateStatusEl.classList.add('err'); break;
-    default: // idle
+    default: // idle: henüz kontrol edilmedi → check eylemi
       updateBtn.textContent = 'Check for updates';
       updateStatusEl.textContent = '';
   }
@@ -370,7 +370,6 @@ function renderUpdatePanel() {
 window.api.onUpdate((u) => {
   lastUpdate = u;
   if (u && typeof u.supported === 'boolean') updatesSupported = u.supported;
-  renderUpdateDot();
   if (!settingsEl.classList.contains('hidden')) renderUpdatePanel();
 });
 setAutoUpdate.addEventListener('change', () => window.api.setAutoUpdate(setAutoUpdate.checked));
@@ -380,8 +379,6 @@ updateBtn.addEventListener('click', () => {
   if (st === 'available' || st === 'ready') window.api.installUpdate();
   else window.api.checkForUpdates(); // idle / none / error → yeniden kontrol
 });
-// Sarı noktaya tıkla → ayarları aç (kullanıcı "Update now"ı bulsun)
-updateDot.addEventListener('click', (e) => { e.stopPropagation(); openSettings(); });
 document.getElementById('set-center').addEventListener('click', () => window.api.resetPosition());
 orientSeg.addEventListener('click', (e) => {
   const o = e.target.dataset.o;
@@ -437,3 +434,4 @@ usageEl.addEventListener('mouseleave', () => hideTooltip());
 
 // ---- data ----
 window.api.onSessions((s) => { sessions = s; render(); });
+
