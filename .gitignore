@@ -1,11 +1,5 @@
 # Glance — .gitignore (Electron / Node)
 
-# AI dev-tooling files (kept local, not published)
-CLAUDE.md
-AGENTS.md
-.cursorrules
-.mcp.json
-
 # Internal docs (ADR / design / roadmap) — kept local, not published
 /docs/
 
