@@ -39,7 +39,10 @@ Three layers, fed in one direction:
 2. The helper enumerates `claude.exe` processes (`Win32_Process`) and for each reads:
    - **cwd** — the target's PEB via `NtQueryInformationProcess` + `ReadProcessMemory` (the project name).
    - **owner window** — walk up the process tree to the first ancestor with `MainWindowHandle != 0` (VS Code /
-     Windows Terminal / console), refined by title match to the right project window.
+     Windows Terminal / console), refined by title match to the right project window. On click, a **Windows
+     Terminal** session is focused at the **tab** level via UI Automation — the helper matches the tab whose
+     title equals the session's live `ai-title` and `Select()`s it, falling back to window-level focus
+     ([ADR 0015](docs/adr/0015-uia-wt-tab-focus.md)).
    - **metrics** — CPU time (`TotalProcessorTime`) + IO transfer counters (CPU-heuristic fallback).
 3. The helper returns a single line `SNAP:{json}`.
 4. The engine parses it, joins each session with Claude's own data for state + workload (below), prunes dead
@@ -74,9 +77,11 @@ most authoritative first:
 ## Persistent state
 
 - `app.getPath('userData')/config.json` — session names and settings. `byPid` (per-PID custom name) and
-  `settings` (`newSessionDir`, `pos` = dragged position, `orientation`, `notify`, `origStatusLine`). Name
-  resolution: `byPid[pid] → auto topic → Claude's derived name → folder basename (#N)`. Auto names aren't
-  persisted (derived at runtime).
+  `settings` (`newSessionDir`, `pos` = dragged position, `orientation`, `scale` = overlay zoom, `notify`,
+  `origStatusLine`). Name resolution: `byPid[pid] → Claude name (nameSource:user) → live ai-title →
+  first-message topic → Claude's derived slug → folder basename (#N)` — the live `ai-title` keeps the label
+  current as the session's topic evolves ([ADR 0014](docs/adr/0014-live-ai-title-naming.md)). Auto names and
+  dot order aren't persisted (derived at runtime).
 - No other DB / cache / queue.
 
 ## Ports / permissions
@@ -95,5 +100,6 @@ them — plus `latest.yml` for the opt-in auto-updater — to a Release on a `v*
 ## Key decisions
 
 Electron overlay; PowerShell + C# (PEB) backend with no native deps; authoritative state from Claude's session
-file with heuristic fallbacks; window (not tab) focus via title matching; jq-free, chaining statusLine capture;
-user-triggered rename / hide / terminate.
+file with heuristic fallbacks; live `ai-title` naming; **tab-level focus in Windows Terminal via UI Automation**
+(window-level fallback elsewhere); jq-free, chaining statusLine capture; `webFrame` overlay scaling;
+user-triggered rename / open-folder / hide / terminate.

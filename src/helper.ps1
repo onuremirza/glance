@@ -109,6 +109,54 @@ public static class Native {
 '@
 Add-Type -TypeDefinition $src -Language CSharp | Out-Null
 
+# UI Automation: Windows Terminal SEKME-düzeyi odak için (ADR 0015). Yerleşik .NET
+# derlemeleri — native derleme zinciri yok (ilke #2). Yüklenemezse (çok eski Windows)
+# sekme-odağı devre dışı kalır, yalnızca pencere-düzeyi odak çalışır (asla helper'ı düşürmez).
+$script:uiaOk = $false
+try { Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes -ErrorAction Stop; $script:uiaOk = $true } catch { $script:uiaOk = $false }
+
+# Sekme başlığını karşılaştırma için normalize et: baştaki spinner/durum glifleri
+# (WT sekmenin önüne "⠂ "/"✳ " gibi ekler) + boşluk/noktalama atılır, küçük harfe indirilir.
+function Normalize-Title([string]$t) {
+  if (-not $t) { return '' }
+  $t = $t -replace '^[\s\p{P}\p{S}]+', ''
+  return $t.Trim().ToLowerInvariant()
+}
+
+# Verilen başlık anahtarına (base64/UTF8) uyan Windows Terminal sekmesini bul, SEÇ ve
+# barındıran pencereyi öne getir. Dönüş: "ok" | "nomatch" | "err". Session→sekme eşlemesi
+# başlık üzerinden: Claude sekme başlığını ai-title/topic'e ayarlar, engine aynı değeri gönderir.
+function Focus-WtTab([string]$b64, [int64]$hwndHint) {
+  if (-not $script:uiaOk) { return 'err' }
+  try { $raw = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)) } catch { return 'err' }
+  $key = Normalize-Title $raw
+  if (-not $key -or $key.Length -lt 2) { return 'nomatch' }
+  try {
+    $auto = [System.Windows.Automation.AutomationElement]
+    $root = $auto::RootElement
+    $winCond = New-Object System.Windows.Automation.PropertyCondition($auto::ClassNameProperty, 'CASCADIA_HOSTING_WINDOW_CLASS')
+    $wins = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $winCond)
+    if ($wins.Count -eq 0) { return 'nomatch' }
+    $tabCond = New-Object System.Windows.Automation.PropertyCondition($auto::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
+    foreach ($w in $wins) {
+      $tabs = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond)
+      foreach ($t in $tabs) {
+        $name = Normalize-Title $t.Current.Name
+        if (-not $name) { continue }
+        # tam eşleşme; ya da yeterince uzun bir tarafın diğerini içermesi (WT başlığı kırpabilir)
+        $hit = ($name -eq $key) -or ($key.Length -ge 6 -and $name.Contains($key)) -or ($name.Length -ge 6 -and $key.Contains($name))
+        if ($hit) {
+          try { $t.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch {}
+          $h = [int64]$w.Current.NativeWindowHandle
+          if ($h -ne 0) { [void][Native]::Focus($h) }
+          return 'ok'
+        }
+      }
+    }
+    return 'nomatch'
+  } catch { return 'err' }
+}
+
 function Get-Snapshot {
   $procs = Get-CimInstance Win32_Process -Filter "Name='claude.exe'"
   if (-not $procs) { return '{"sessions":[]}' }
@@ -191,6 +239,14 @@ while ($true) {
       $hwnd = 0; [void][int64]::TryParse($line.Substring(6), [ref]$hwnd)
       $ok = [Native]::Close($hwnd)
       [Console]::Out.WriteLine("CLOSE:" + ($(if ($ok) { "ok" } else { "err" })))
+    } elseif ($line.StartsWith("FOCUSTAB:")) {
+      # Biçim: FOCUSTAB:<hwndHint>:<base64-başlık>  → doğru WT sekmesini seç + öne getir
+      $rest = $line.Substring(9); $ci = $rest.IndexOf(':')
+      $hwndHint = 0; $b64 = ''
+      if ($ci -ge 0) { [void][int64]::TryParse($rest.Substring(0, $ci), [ref]$hwndHint); $b64 = $rest.Substring($ci + 1) }
+      else { $b64 = $rest }
+      $res = Focus-WtTab $b64 $hwndHint
+      [Console]::Out.WriteLine("FOCUSTAB:$res")
     } elseif ($line -eq "EXIT") {
       break
     }

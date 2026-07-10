@@ -3,6 +3,35 @@
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com); this
 project adheres to [SemVer](https://semver.org).
 
+## [0.3.0]
+
+### Added
+- **Overlay ölçekleme.** Ayarlar → "Size" **−/+ adımlayıcısı** **+ pill üstünde Ctrl+tekerlek** ile tüm
+  overlay (nokta/pill/yazı/halka) **0.7–2.0** arası ölçeklenir; kalıcı. `webFrame.setZoomFactor` ile
+  hit-test doğru ve CSS koordinat uzayı sabit kaldığından popup/panel **hiç kırpılmaz** ([ADR 0016](docs/adr/0016-overlay-scale-and-direct-drag.md)).
+- **Doğrudan sürükleme + yeniden sıralama.** Pill'in **boş zemininden** tutup taşıma (küçük `✥`
+  tutamağına ek, daha büyük isabet alanı) ve noktaları **sürükle-bırak** ile yeniden sıralama
+  (transform-tabanlı: sürüklenen parmağı takip eder, kardeşler boşluk açar, sıra bırakınca commit;
+  runtime'lık) ([ADR 0016](docs/adr/0016-overlay-scale-and-direct-drag.md)).
+- **Windows Terminal sekme-düzeyi odak.** Win11'de tüm session'lar tek WT penceresine akar (aynı `hwnd`);
+  artık tıklama **UIA** ile DOĞRU sekmeyi seçip öne getirir (başlık = `ai-title` ile eşleşir), eşleşmez
+  / UIA hata / WT değilse **pencere-düzeyi odağa** düşer. ADR 0004'ün sekme non-goal'ını WT için geçersiz
+  kılar ([ADR 0015](docs/adr/0015-uia-wt-tab-focus.md)).
+- **Sağ-tık → "Open folder".** Session'ın klasörünü Explorer'da açar (kullanıcı-tetikli).
+- **prefers-reduced-motion.** Sistem "hareketi azalt" açıkken nabız/geçişler kısılır (bloke durum yine
+  renk + sabit glow ile ayrışır).
+- Tooltip: aynı pencereyi paylaşan session'lar için **"same window (N/M)"** ipucu.
+
+### Fixed
+- **Nokta ismi "donuyordu".** Session'ın konusu ilerledikçe değişse de ad ilk mesajda sabit kalıyordu
+  (`topic` sessionId başına sonsuza önbellekli + önceliği ezerdi). Artık Claude'un **canlı `ai-title`**'ı
+  öncelikli okunur (mevcut transcript-kuyruğu okumasına biner, **ek IO yok**) → ad session'ın o anki
+  konusunu izler; `nameSource:"user"` (Claude içinde elle verilen ad) daha da güçlü ([ADR 0014](docs/adr/0014-live-ai-title-naming.md)).
+
+### Changed
+- `focus` IPC artık `pid` alır; host/hwnd/başlığı main **izlenen session'dan** çözer (renderer'a güvenmeden)
+  → WT'de sekme-düzeyi, aksi halde pencere-düzeyi odak. Bildirim tıklaması da aynı yolu kullanır.
+
 ## [0.2.6]
 
 ### Fixed

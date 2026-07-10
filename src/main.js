@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, Tray, Menu, screen, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, screen, nativeImage, Notification, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -23,14 +23,26 @@ if (!gotLock) app.quit();
 // wide+short (popups open downward). Vertical: narrow-ish+tall (dots stack, popups
 // open to the right). Generous so popups/tooltips aren't clipped.
 const SIZE = {
-  horizontal: { w: 560, h: 460 }, // tall enough for the settings panel (opens downward, ~421px)
+  horizontal: { w: 560, h: 512 }, // settings paneli aşağı açılır; "Size" satırı eklendi → panel ~460px
   vertical: { w: 400, h: 560 },
 };
 function orientation() {
   return (config.settings && config.settings.orientation) === 'vertical' ? 'vertical' : 'horizontal';
 }
-function barSize() { return SIZE[orientation()]; }
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+// Kullanıcı ölçeği: tüm overlay webFrame.setZoomFactor ile büyür/küçülür. Pencerenin FİZİKSEL
+// boyutu taban × scale olur; renderer'ın CSS-px koordinat uzayı sabit kalır (zoom=scale) →
+// popup konum matematiği aynen çalışır. Aralık 0.7–2.0.
+const SCALE_MIN = 0.7, SCALE_MAX = 2;
+function scaleFactor() {
+  const s = config.settings && config.settings.scale;
+  return Number.isFinite(s) ? clamp(s, SCALE_MIN, SCALE_MAX) : 1;
+}
+function barSize() {
+  const b = SIZE[orientation()];
+  const z = scaleFactor();
+  return { w: Math.round(b.w * z), h: Math.round(b.h * z) };
+}
 
 // ---------- config (names + settings) ----------
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
@@ -122,8 +134,12 @@ function enrichNames(list) {
   list.forEach((s) => { cwdCount[s.cwd] = (cwdCount[s.cwd] || 0) + 1; });
   const cwdIdx = {};
   return list.map((s) => {
-    // Priority: user rename > auto topic (transcript) > Claude's derived name > folder (#N).
+    // Öncelik: Glance'te elle isim > Claude'da elle isim (nameSource:user) > canlı ai-title
+    // (konu değiştikçe güncellenir) > ilk-mesaj topic (eski sürüm yedeği) > Claude türetilmiş
+    // slug > klasör(#N). ai-title, ilk-mesaj topic'in "donuk" kalma sorununu çözer.
     let name = config.byPid[s.pid];
+    if (!name && s.nameSource === 'user' && s.claudeName) name = s.claudeName;
+    if (!name && s.aiTitle) name = s.aiTitle;
     if (!name && s.topic) name = s.topic;
     if (!name && s.claudeName) name = s.claudeName;
     if (!name) {
@@ -152,6 +168,20 @@ function openNewSession() {
       { cwd: dir, detached: true, stdio: 'ignore', windowsHide: false });
     p.unref();
   } catch (e) { console.error('new session failed', e); }
+}
+
+// Bir session'ı öne getir. Windows Terminal gibi PAYLAŞIMLI host'ta (tüm sekmeler tek
+// pencere/hwnd) UIA ile DOĞRU sekmeyi seçmeyi dener (başlık = aiTitle/topic ile eşleşir);
+// eşleşmez / UIA hata / paylaşımlı değilse pencere-düzeyi odağa düşer (ADR 0015).
+const WT_HOST = /^WindowsTerminal\.exe$/i;
+async function focusSession(s) {
+  if (!s || !engine) return false;
+  if (!s.hwnd) return false;
+  const title = s.aiTitle || s.topic || '';
+  if (WT_HOST.test(s.host || '') && title) {
+    try { if ((await engine.focusTab(s.hwnd, title)) === 'ok') return true; } catch { /* yedeğe düş */ }
+  }
+  return engine.focus(s.hwnd);
 }
 
 // Terminate a session (and its child processes) by pid.
@@ -262,6 +292,9 @@ function positionWindow() {
 function sendOrientation() {
   if (win && !win.isDestroyed()) win.webContents.send('orientation', orientation());
 }
+function sendScale() {
+  if (win && !win.isDestroyed()) win.webContents.send('scale', scaleFactor());
+}
 
 let _savePosTimer = null;
 function rememberPosition() {
@@ -298,7 +331,7 @@ function createWindow() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   positionWindow();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.webContents.on('did-finish-load', sendOrientation); // apply saved orientation on load
+  win.webContents.on('did-finish-load', () => { sendOrientation(); sendScale(); }); // apply saved orientation + scale on load
 
   // Click-through by default; renderer toggles when hovering interactive elements.
   win.setIgnoreMouseEvents(true, { forward: true });
@@ -354,7 +387,7 @@ function notifyTransitions(enriched) {
   const fire = (title, body, s) => {
     try {
       const n = new Notification({ title, body });
-      n.on('click', () => { if (s.hwnd) engine.focus(s.hwnd); });
+      n.on('click', () => { focusSession(s); }); // WT'de doğru sekmeye, aksi halde pencereye
       n.show();
     } catch { /* notifications unsupported */ }
   };
@@ -447,7 +480,12 @@ app.whenReady().then(() => {
   }
 
   // ---------- IPC ----------
-  ipcMain.handle('focus', async (_e, hwnd) => engine.focus(hwnd));
+  // Renderer pid gönderir; İZLENEN session'dan (lastSessions) host/hwnd/başlığı main çözer
+  // (renderer'a güvenmeden) → WT'de sekme-düzeyi, aksi halde pencere-düzeyi odak.
+  ipcMain.handle('focus', async (_e, pid) => {
+    const s = lastSessions.find((x) => x.pid === parseInt(pid, 10));
+    return s ? focusSession(s) : false;
+  });
 
   ipcMain.handle('rename', (_e, { pid, name }) => {
     name = (name || '').trim();
@@ -470,9 +508,15 @@ app.whenReady().then(() => {
 
   ipcMain.on('hide-session', (_e, pid) => { hidden.add(parseInt(pid, 10)); pushSessions(); });
 
+  // Session'ın klasörünü Explorer'da aç (kullanıcı-tetikli, salt gözlem ilkesini bozmaz).
+  ipcMain.on('open-folder', (_e, cwd) => {
+    try { if (cwd && fs.existsSync(cwd)) shell.openPath(cwd); } catch (e) { console.error('open-folder', e); }
+  });
+
   ipcMain.handle('get-settings', () => ({
     ...(config.settings || {}),
     orientation: orientation(),
+    scale: scaleFactor(),
     notify: !config.settings || config.settings.notify !== false, // default on
     richData: richDataEnabled(),
     openAtLogin: app.getLoginItemSettings().openAtLogin,
@@ -484,6 +528,15 @@ app.whenReady().then(() => {
   ipcMain.on('set-notify', (_e, on) => { config.settings.notify = !!on; saveConfig(); });
 
   ipcMain.handle('set-rich-data', (_e, on) => (on ? enableRichData() : disableRichData()));
+
+  // Overlay ölçeği: kaydet, pencereyi yeni fiziksel boyuta göre yeniden konumla (ekran
+  // içinde clamp) ve renderer'a bildir (webFrame.setZoomFactor uygular).
+  ipcMain.on('set-scale', (_e, sc) => {
+    config.settings.scale = clamp(Number(sc) || 1, SCALE_MIN, SCALE_MAX);
+    saveConfig();
+    positionWindow(); // barSize() artık ölçekli → boyut + ekran-içi clamp
+    sendScale();
+  });
 
   ipcMain.on('set-orientation', (_e, o) => {
     config.settings.orientation = o === 'vertical' ? 'vertical' : 'horizontal';

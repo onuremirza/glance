@@ -1,15 +1,16 @@
 'use strict';
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   onSessions: (cb) => ipcRenderer.on('sessions', (_e, s) => cb(s)),
-  focus: (hwnd) => ipcRenderer.invoke('focus', hwnd),
+  focus: (pid) => ipcRenderer.invoke('focus', pid),
   rename: (payload) => ipcRenderer.invoke('rename', payload),
   setIgnore: (ignore) => ipcRenderer.send('set-ignore', ignore),
   newSession: () => ipcRenderer.send('new-session'),
   killSession: (pid) => ipcRenderer.send('kill-session', pid),
   switchToTerminal: (payload) => ipcRenderer.send('switch-to-terminal', payload),
   hideSession: (pid) => ipcRenderer.send('hide-session', pid),
+  openFolder: (cwd) => ipcRenderer.send('open-folder', cwd),
   onPopupClose: (cb) => ipcRenderer.on('popup-close', () => cb()),
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onUsage: (cb) => ipcRenderer.on('usage', (_e, u) => cb(u)),
@@ -20,6 +21,9 @@ contextBridge.exposeInMainWorld('api', {
   setRichData: (on) => ipcRenderer.invoke('set-rich-data', on),
   setOrientation: (o) => ipcRenderer.send('set-orientation', o),
   onOrientation: (cb) => ipcRenderer.on('orientation', (_e, o) => cb(o)),
+  // Ölçek: main scale gönderir → tüm frame'i zoom'la (hit-test doğru) + renderer'ı bilgilendir.
+  setScale: (sc) => ipcRenderer.send('set-scale', sc),
+  onScale: (cb) => ipcRenderer.on('scale', (_e, sc) => { try { webFrame.setZoomFactor(sc); } catch { /* yok say */ } cb(sc); }),
   onUpdate: (cb) => ipcRenderer.on('update', (_e, u) => cb(u)),
   setAutoUpdate: (on) => ipcRenderer.send('set-auto-update', on),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

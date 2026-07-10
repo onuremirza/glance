@@ -87,6 +87,7 @@ class Engine extends EventEmitter {
     this._prev = new Map();       // pid -> { cpuMs, io, ts, hist:[dCpu,...] }
     this._timer = null;
     this._focusWaiters = [];
+    this._focusTabWaiters = []; // FOCUSTAB yanıtı bekleyenler (UIA sekme odağı)
     // Reliability: watchdog (restart helper if it dies) + snap timeout (recover if
     // a SNAP reply is lost so polling never freezes permanently).
     this._stopped = false;
@@ -112,7 +113,8 @@ class Engine extends EventEmitter {
     this._mtimes = new Map();     // jsonl abs path -> mtimeMs (previous tick)
     this._votes = new Map();      // pid -> Map(sessionId -> count)
     this._pidSid = new Map();     // pid -> resolved sessionId
-    this._sidTopic = new Map();   // sessionId -> short label (cached)
+    this._sidTopic = new Map();   // sessionId -> short label (cached; ilk mesaj — statik)
+    this._sidTitle = new Map();   // sessionId -> Claude'un canlı ai-title'ı (konu değişince güncellenir)
     this._mtimeInit = false;
   }
 
@@ -142,6 +144,7 @@ class Engine extends EventEmitter {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
     if (this._snapTimeout) { clearTimeout(this._snapTimeout); this._snapTimeout = null; }
     this._focusWaiters.splice(0).forEach((w) => w(false));
+    this._focusTabWaiters.splice(0).forEach((w) => w('err'));
     if (this._stopped) return;
     this._restarts++;
     if (this._restarts > this.maxRestarts) {
@@ -165,6 +168,12 @@ class Engine extends EventEmitter {
       if (this._snapTimeout) { clearTimeout(this._snapTimeout); this._snapTimeout = null; }
       this._handleSnapshot(line.slice(5));
       this._scheduleNext();
+      return;
+    }
+    if (line.startsWith('FOCUSTAB:')) {
+      const res = line.slice(9); // 'ok' | 'nomatch' | 'err'
+      const w = this._focusTabWaiters.shift();
+      if (w) w(res);
       return;
     }
     if (line.startsWith('FOCUS:')) {
@@ -252,6 +261,7 @@ class Engine extends EventEmitter {
       metaSeen = true;
       if (meta.sessionId) s.sessionId = meta.sessionId;
       if (meta.name) s.claudeName = meta.name;
+      if (meta.nameSource) s.nameSource = meta.nameSource; // "derived" | "user" — user ise elle adlandırılmış
       s.kind = meta.kind; // "interactive" | "bg" — bg'nin terminal penceresi yok (aşağıda süzülür)
       if (meta.status === 'compacting') { s.status = 'compacting'; s.stateSrc = 'claude'; }
       else if (meta.status === 'waiting') {
@@ -372,7 +382,8 @@ class Engine extends EventEmitter {
       const sid = eff.get(s.pid);
       if (!sid) continue;
       const dir = dirByCwd.get(s.cwd);
-      s.topic = this._topicFor(dir, sid); // cached per sid
+      s.topic = this._topicFor(dir, sid); // cached per sid (ilk mesaj — statik)
+      s.aiTitle = this._sidTitle.get(sid) || null; // son bilinen canlı başlık; _sessionState çalışınca tazelenir
       // Exact numbers from the statusLine capture first (context %, cost, rate-limits).
       let haveCtx = false;
       const cap = this._readStatus(sid);
@@ -395,7 +406,9 @@ class Engine extends EventEmitter {
       // 'busy' dediğinde de eski sürüm bir soruyu maskeliyor olabilir → sorarsa düzelt.
       const needState = s.stateSrc !== 'claude';
       const jsonIdle = s.stateSrc === 'claude' && s.status === 'waiting';
-      if (needState || jsonIdle || s._maybeQuestion || !haveCtx) {
+      // Başlığı ilk turda bir kez oku (bootstrap); sonra durum-okuması zaten tetiklendiğinde tazelenir.
+      const needTitle = !this._sidTitle.has(sid);
+      if (needState || jsonIdle || s._maybeQuestion || !haveCtx || needTitle) {
         const st = this._sessionState(dir, sid, s.status === 'busy');
         if (st) {
           if (needState && st.state) { s.status = st.state; s.stateSrc = 'transcript'; }
@@ -407,6 +420,10 @@ class Engine extends EventEmitter {
             s.ctx = st.ctxTokens;
             s.ctxPct = Math.min(1, st.ctxTokens / ctxLimit(st.model, st.ctxTokens));
           }
+          // Canlı başlık: taze okuma varsa güncelle (konu değiştikçe), yoksa son bilineni koru;
+          // eski sürüm (ai-title yok) → null'la bootstrap et ki her turda yeniden okumaya zorlamasın.
+          if (st.aiTitle) { this._sidTitle.set(sid, st.aiTitle); s.aiTitle = st.aiTitle; }
+          else if (needTitle) this._sidTitle.set(sid, null);
         }
       }
     }
@@ -435,10 +452,13 @@ class Engine extends EventEmitter {
       let text = buf.toString('utf8');
       if (start > 0) { const nl = text.indexOf('\n'); if (nl >= 0) text = text.slice(nl + 1); } // drop partial line
       const lines = text.split('\n');
-      let lastReal = null, lastRole = null, ctxTokens = null, model = null;
+      let lastReal = null, lastRole = null, ctxTokens = null, model = null, aiTitle = null;
       for (let i = lines.length - 1; i >= 0; i--) {
         const ln = lines[i]; if (!ln.trim()) continue;
         let o; try { o = JSON.parse(ln); } catch { continue; }
+        // Claude'un canlı başlığı: konuşma ilerledikçe yeniden türetilip transcript'e yazılır;
+        // sondan tarandığı için ilk rastlanan = en güncel. (İçerik değil, yalnız başlık — ilke #3.)
+        if (aiTitle == null && o.type === 'ai-title' && o.aiTitle) aiTitle = String(o.aiTitle).replace(/\s+/g, ' ').trim();
         const role = convRole(o); // 'user' | 'assistant' | null (yeni type:"message"'ı da tanır)
         if (ctxTokens == null && role === 'assistant') {
           const u = o.message && o.message.usage;
@@ -448,9 +468,9 @@ class Engine extends EventEmitter {
           }
         }
         if (!lastReal && role) { lastReal = o; lastRole = role; }
-        if (lastReal && ctxTokens != null) break;
+        if (lastReal && ctxTokens != null && aiTitle != null) break;
       }
-      if (!lastReal) return { state: null, ctxTokens, model };
+      if (!lastReal) return { state: null, ctxTokens, model, aiTitle };
       // NOT: mtime'a GÜVENME — yeni meta girdileri (ai-title/mode/permission-mode) mtime'ı
       // bumpluyor; "fresh → busy" kısa-devresi soru/izni 2.5s bastırıyordu. Onun yerine
       // stop_reason: yoksa akış sürüyor (busy), tool_use → bloke, bittiyse boşta.
@@ -469,7 +489,7 @@ class Engine extends EventEmitter {
       } else {
         state = 'waiting';                       // end_turn/stop_sequence/max_tokens → bitti, boşta
       }
-      return { state, ctxTokens, model };
+      return { state, ctxTokens, model, aiTitle };
     } catch { return null; }
   }
 
@@ -479,7 +499,7 @@ class Engine extends EventEmitter {
       const o = JSON.parse(fs.readFileSync(path.join(this.sessionsDir, pid + '.json'), 'utf8'));
       // waitingFor: Claude Code v2.1.199+ 'waiting' durumunda NEDEN durduğunu söyler
       // ("permission prompt" vb). Bloke türünü (izin vs soru) transcript'ten daha kesin verir.
-      return { sessionId: o.sessionId, status: o.status, kind: o.kind, name: o.name, waitingFor: o.waitingFor };
+      return { sessionId: o.sessionId, status: o.status, kind: o.kind, name: o.name, nameSource: o.nameSource, waitingFor: o.waitingFor };
     } catch { return null; }
   }
 
@@ -541,6 +561,26 @@ class Engine extends EventEmitter {
       this._focusWaiters.push(waiter);
       try { this.proc.stdin.write('FOCUS:' + hwnd + '\n'); } catch { finish(false); }
       setTimeout(() => finish(false), 3000);
+    });
+  }
+
+  // Paylaşımlı host (Windows Terminal) için SEKME-düzeyi odak: başlık anahtarıyla (aiTitle/
+  // topic) doğru sekmeyi UIA ile seçip pencereyi öne getir. Dönüş: 'ok' | 'nomatch' | 'err'.
+  // 'ok' değilse çağıran pencere-düzeyi focus()'a düşer (regresyon yok).
+  focusTab(hwnd, title) {
+    return new Promise((resolve) => {
+      if (!this.ready || !title) return resolve('err');
+      const b64 = Buffer.from(String(title), 'utf8').toString('base64');
+      let done = false;
+      const waiter = (res) => { if (done) return; done = true; resolve(res); };
+      const finish = (res) => {
+        const i = this._focusTabWaiters.indexOf(waiter);
+        if (i >= 0) this._focusTabWaiters.splice(i, 1); // keep FIFO aligned with replies
+        waiter(res);
+      };
+      this._focusTabWaiters.push(waiter);
+      try { this.proc.stdin.write('FOCUSTAB:' + (hwnd || 0) + ':' + b64 + '\n'); } catch { finish('err'); }
+      setTimeout(() => finish('err'), 4000); // UIA ağaç yürümesi biraz yavaş olabilir
     });
   }
 

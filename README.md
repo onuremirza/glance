@@ -22,8 +22,11 @@ at the top of your screen. Each session is a **dot**:
 - the **ring** around a dot = context window usage (workload)
 - the little bar on the pill = your account's **5-hour usage limit**
 - **hover** a dot for details (project, state, context %, cost, pid); **click** to bring its terminal window
-  forward; **right-click** to rename / **switch to terminal** (reopen the session in its own new window) /
-  hide / terminate; **`+`** to start a new session
+  forward — in **Windows Terminal** it selects the exact **tab**; **right-click** to rename / **switch to
+  terminal** (reopen the session in its own new window) / **open folder** / hide / terminate; **`+`** to start
+  a new session
+- **make it yours:** drag the pill (anywhere) to move it, **drag a dot** to reorder, **Ctrl+scroll** (or
+  Settings → Size) to resize the whole overlay
 
 The purple/amber states answer "why did it stop?" at a glance — it's blocked on *you*. A desktop
 **notification** fires when a session needs you (asks a question / needs approval), so you don't have to keep
@@ -38,8 +41,12 @@ checking.
 - **Workload** — a context-fill ring per dot + tokens/cost in the tooltip
 - **Usage limit** — 5-hour / 7-day account usage (optional "rich data")
 - **Notifications** when a session needs you (question / approval)
-- **Jump to session** — brings the right terminal window forward (matches the project by window title)
-- **Horizontal or vertical**, draggable, always-on-top, click-through (never blocks the desktop), single-instance
+- **Auto-naming** — each dot is named from the session's **live title** (updates as the topic changes); a
+  manual rename always wins
+- **Jump to session** — brings the right terminal window forward; in **Windows Terminal** it selects the exact
+  **tab** (UI Automation), matched by the session's live title, with a window-level fallback
+- **Horizontal or vertical**, **scalable** (Ctrl+scroll / Settings → Size), draggable from the pill,
+  **reorderable dots**, always-on-top, click-through (never blocks the desktop), single-instance
 - **Opt-in auto-update** (off by default) — checks GitHub Releases only when you enable it; no network otherwise
 - **Local & private** — no telemetry; detection is pure local process + file inspection (the only optional
   network is the opt-in updater)

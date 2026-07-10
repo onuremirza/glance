@@ -39,6 +39,7 @@ html, body {
   display: flex;
   align-items: center;
   padding: 7px 16px;
+  cursor: grab;         /* boş pill zemini sürüklenebilir (noktalar/kontroller kendi cursor'ını ezer) */
   background: var(--pill);
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 20px;
@@ -265,6 +266,24 @@ html, body {
 #dots.empty { opacity: 0.55; transition: opacity 0.25s ease; }
 #dots.empty:hover { opacity: 1; }
 
+/* boyut (ölçek) kontrolü: −/+ adım düğmeleri + yüzde (kaydırıcı canlı-zoom sırasında
+   thumb'ı parmağın altından kaçırıyordu → tık-tabanlı stepper daha güvenilir). */
+.size-ctl { display: flex; align-items: center; gap: 6px; }
+.step-btn {
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.07);
+  color: var(--text);
+  border-radius: 6px;
+  font-size: 15px; line-height: 1;
+  font-family: inherit; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.step-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.20); }
+.step-btn:active { background: var(--green); color: #08130c; }
+.scale-label { font-size: 11px; color: var(--sub); min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+
 /* segmented control (Yatay / Dikey) */
 .seg { display: inline-flex; background: rgba(255,255,255,0.06); border-radius: 8px; padding: 2px; gap: 2px; }
 .seg button {
@@ -317,6 +336,8 @@ body.vertical .hint { padding: 3px 0; text-align: center; }
   position: relative;
 }
 .dot:hover { transform: scale(1.35); }
+/* yeniden sıralanırken sürüklenen nokta: öne çık (transform inline'da parmağı takip eder) */
+.dot.dragging { opacity: 0.85; z-index: 5; cursor: grabbing; box-shadow: 0 2px 12px rgba(0,0,0,0.55); }
 /* Spacing lives on the dots (not a flex `gap`) so the collapsed "+" adds no
    width — keeps the resting pill symmetric (equal left/right padding). */
 .dot + .dot { margin-left: 12px; }
@@ -369,6 +390,14 @@ body.vertical .hint { padding: 3px 0; text-align: center; }
   50%     { box-shadow: 0 0 14px var(--glow); }
 }
 
+/* Erişilebilirlik: "hareketi azalt" açıkken nabız/geçişleri kıs. Bloke durum yine
+   renk + sabit glow ile ayrışır (nabız tek sinyal değil). */
+@media (prefers-reduced-motion: reduce) {
+  .dot.question, .dot.permission { animation: none; }
+  .dot, .add, .ctrl, .usage-fill, .slider, .slider::before,
+  .seg button, .panel-btn, .dot::after { transition: none !important; }
+}
+
 .tooltip {
   position: fixed;
   background: rgba(15,16,19,0.96);
@@ -383,7 +412,7 @@ body.vertical .hint { padding: 3px 0; text-align: center; }
   box-shadow: 0 6px 22px rgba(0,0,0,0.5);
   z-index: 50;
 }
-.tooltip .t-name { font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+.tooltip .t-name { font-weight: 600; font-size: 12.5px; white-space: normal; word-break: break-word; }
 .tooltip .t-state-busy { color: var(--green); }
 .tooltip .t-state-question { color: var(--purple); }
 .tooltip .t-state-permission { color: var(--amber); }
